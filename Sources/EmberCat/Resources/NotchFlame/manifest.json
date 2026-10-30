@@ -1,0 +1,20 @@
+{
+  "name": "Unity Labs Flame03 + Flame03-hollow",
+  "license": "CC0-1.0",
+  "publisherURL": "https://unity.com/blog/engine-platform/free-vfx-image-sequences-flipbooks",
+  "sourceURL": "https://unity3d.com/files/labs/downloads/vfx/assets01/Flame03-hollow/Flame03-hollow-sequence-tga.zip",
+  "sourceSHA256": "f50cc62ccb1d688cc5021e56edbd42b4c07f10f302661da005d411d495f8c40a",
+  "coreSourceURL": "https://unity3d.com/files/labs/downloads/vfx/assets01/Flame03/Flame03-sequence-tga.zip",
+  "coreSourceSHA256": "de83d35340bde0570c7f5ab3fd383625d81bb70b8e4ee92a64b02ec27d952b25",
+  "coreMix": 0.3,
+  "atlasSHA256": "c379b469c5b904e7bc10e004fb3ea7cfa1f076c29ad1f4040eb34e0d2e48ad2f",
+  "frameWidth": 128,
+  "frameHeight": 240,
+  "gridColumns": 16,
+  "gridRows": 10,
+  "frameCount": 160,
+  "framesPerSecond": 30,
+  "firstSourceFrame": 129,
+  "sourceFrameStep": 2,
+  "loopBlendFrames": 12
+}

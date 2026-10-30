@@ -1,0 +1,38 @@
+{
+  "source": "imagegen CLI, project-configured image model; white-background artwork",
+  "processing": "ink extraction, strengthened contours, head alignment, alpha-only templates",
+  "runFrames": 8,
+  "idle": "standing",
+  "logicalSize": [
+    28,
+    18
+  ],
+  "scales": [
+    1,
+    2
+  ],
+  "sourceSHA256": {
+    "run-sheet.png": "58d13b596aaa52b2b157d4b609d48aeb7170592a6cd126dc695c4ed7855a816d",
+    "idle.png": "42c7cd87f8193431dadb70537f4be8cdafaa040dc2fde3533a6538cef508badd"
+  },
+  "outputSHA256": {
+    "frame-01.png": "e71f3c08c429d1f9f61729ce7c9f4db17d484c2c666a12080bc867ad883b8b81",
+    "frame-01@2x.png": "57076d251bf574d0b9b8ddd61dcce5766aa55e56400480ce61c6519828b26d15",
+    "frame-02.png": "065ba7b7784e011deb42a2472fdc9030688f1f01c0d86f488f633006b3ded431",
+    "frame-02@2x.png": "b7a1b9f1d7e6ced33b14a1e3235ca131be9c4b9c2a29c67e73a5a3aa7ce56825",
+    "frame-03.png": "2cd269118b8fbbd53dadd82be97d2a1d9d966e4b1e1b0ee56bc1a05a251cc362",
+    "frame-03@2x.png": "a04bccb94601fe2c23c0a06cd39b9af5d2aea7877dec61ab30543a42e018d386",
+    "frame-04.png": "e0118e0e07126cc16483f345c844f70c37d3551534914003bbb781af3c0066c4",
+    "frame-04@2x.png": "7f301bb0e36d55597b34a523a66284ef6e04ed836964510307d4638bdae48c3e",
+    "frame-05.png": "05d65c4c3b1a47dbc2cdf2a7a3f26695d49fca266dfdb991b2488eaea64238d4",
+    "frame-05@2x.png": "481e670ad1ee866a73f6f6b97ca9429328b52ad6266342d26d4fcd227ec84da7",
+    "frame-06.png": "b5d379c0ded06a4f8c56048e978cf0618d71d849050feed8e762fd5dbb053d53",
+    "frame-06@2x.png": "7c01c5073f44f8e6ad4e264a03fbd335a806d9cc2877d7d77e436252c8932992",
+    "frame-07.png": "5a14792f16540cda07958bdc82be6e394b1a8d99fa367cc2fe2749b4a4b82fdc",
+    "frame-07@2x.png": "efd240c6edb570b67646d6dc1deb13c097ab7a199cf6259d9308ee587c5f666c",
+    "frame-08.png": "4231ba8f7dfc0b938d130c4b7f8ef2d2334c6808910d2df166372d7253e304af",
+    "frame-08@2x.png": "9638ff4432f06297d056aa4f0680afa13dfa66ee41e6fd613eb9915c438aac2d",
+    "idle.png": "8426a4ea16b7dbf8c37daf31c37e22d428962e8715c5f5f0c8ef0539e63b7eb2",
+    "idle@2x.png": "f4a1bd7f28433e6b0c926dda8608576a95c5fe521e0248c060794c1b6f7dca5c"
+  }
+}

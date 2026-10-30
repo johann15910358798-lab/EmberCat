@@ -1,0 +1,15 @@
+# Local configuration
+.env
+.env.*
+!.env.example
+
+# Build outputs and local tooling
+.build/
+/dist/
+/work/
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS metadata
+.DS_Store

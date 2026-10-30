@@ -1,0 +1,43 @@
+// swift-tools-version: 6.0
+import PackageDescription
+
+let package = Package(
+    name: "EmberCat",
+    platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "EmberCat", targets: ["EmberCat"]),
+    ],
+    targets: [
+        .target(
+            name: "CZstd",
+            path: "Vendor/CZstd",
+            exclude: ["LICENSE", "VENDOR.md"],
+            publicHeadersPath: ".",
+            cSettings: [
+                .define("ZSTD_DISABLE_ASM", to: "1"),
+                .define("ZSTD_LEGACY_SUPPORT", to: "0"),
+                .define("ZSTD_TRACE", to: "0"),
+            ]
+        ),
+        .target(
+            name: "AgentSpeedCore",
+            dependencies: ["CZstd"],
+            path: "Vendor/AgentSpeedCore"
+        ),
+        .executableTarget(
+            name: "EmberCat",
+            dependencies: ["AgentSpeedCore"],
+            path: "Sources/EmberCat",
+            exclude: [
+                "Resources/Sprites",
+                "Resources/NotchFlame",
+                "NotchFlameController.swift",
+                "NotchFlameRenderer.swift",
+                "NotchFlameSettings.swift",
+                "NotchFlamePreviewController.swift",
+            ],
+            resources: [.copy("Resources/MenuBarPets")]
+        ),
+        .testTarget(name: "EmberCatTests", dependencies: ["EmberCat"], path: "Tests/EmberCatTests"),
+    ]
+)
