@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>玛奇玛 · 整套动作预览</title><link rel="icon" href="data:,">
+<style>
+:root{color-scheme:light;--bg:#f4f3ef;--card:#fffefa;--ink:#272d2a;--muted:#69716b;--line:#d8dcd4;--accent:#376451}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+main{max-width:1060px;margin:32px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center;gap:20px}h1{font-size:28px;margin:0 0 5px;font-weight:650}p{margin:0;color:var(--muted)}
+button,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:7px 13px;cursor:pointer}button[aria-pressed=true]{background:var(--accent);color:white;border-color:var(--accent)}button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #65a88b;outline-offset:3px}button:disabled{opacity:.45;cursor:default}
+nav,.controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:24px 0 16px}.controls{margin:18px 0}.spacer{flex:1}.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:12px;overflow:hidden}.title{padding:17px 20px 0;display:flex;justify-content:space-between;align-items:baseline}.title strong{font-size:18px}.title span{font-size:13px;color:var(--muted)}canvas.large{width:100%;height:auto;aspect-ratio:1.8;display:block}.actual{padding:13px 20px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted)}.bar{display:flex;align-items:center;gap:6px;padding:3px 10px;height:28px;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:5px}.small{width:36px;height:20px;display:block}.timeline{display:flex;align-items:center;gap:12px;margin:20px 0}input{flex:1;accent-color:var(--accent)}output{min-width:104px;font-variant-numeric:tabular-nums;color:var(--muted)}footer{font-size:13px;color:var(--muted)}#description{margin-top:12px;min-height:26px}.jump{border-top:1px solid var(--line);padding-top:16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:18px 0}.jump span{color:var(--muted)}
+body.dark{color-scheme:dark;--bg:#202622;--card:#2a322d;--ink:#f0f4ed;--muted:#b6c1b7;--line:#465349;--accent:#57836b}
+@media(max-width:680px){main{padding:0 14px;margin:20px auto}header{align-items:flex-start}h1{font-size:23px}.grid{grid-template-columns:1fr}.title{padding:12px 16px 0}.title span{font-size:12px}nav{gap:6px}nav button{padding:6px 10px}.actual{padding:10px 16px}}
+</style>
+<main>
+<header><div><h1>玛奇玛 · 整套动作</h1><p>九种连续动作，保留原画中的脸、刘海、辫子与服装。</p></div><button id="theme" aria-pressed="false">深色背景</button></header>
+<nav id="modes" aria-label="动作选择"></nav>
+<div class="grid">
+<section class="card"><div class="title"><strong>原版动作</strong><span id="oldMeta">8 帧</span></div><canvas class="large" id="oldLarge" width="576" height="320" aria-label="原版动画放大"></canvas><div class="actual"><span>菜单栏实际尺寸</span><span class="bar"><canvas class="small" id="oldSmall" width="72" height="40" aria-label="原版实际尺寸"></canvas><span class="rate"></span></span></div></section>
+<section class="card"><div class="title"><strong id="newTitle">连续动画</strong><span id="newMeta">60 fps</span></div><canvas class="large" id="newLarge" width="576" height="320" aria-label="新动画高清预览"></canvas><div class="actual"><span>菜单栏实际尺寸</span><span class="bar"><canvas class="small" id="newSmall" width="72" height="40" aria-label="新动画实际尺寸"></canvas><span class="rate"></span></span></div></section>
+</div>
+<p id="description"></p>
+<div class="controls"><button id="play">暂停</button><select id="speed" aria-label="播放速度"><option value="1">正常速度</option><option value="0.5">半速查看</option></select><span class="spacer"></span><span id="status" role="status">正在载入…</span></div>
+<div class="timeline"><button id="previous" aria-label="上一帧">←</button><input id="frame" aria-label="动画帧" type="range" min="1" max="96" value="1"><button id="next" aria-label="下一帧">→</button><output id="position">001 / 096</output></div>
+<div class="jump"><span>从当前动作切换到</span><select id="destination" aria-label="过渡目标"></select><button id="transition">播放切换</button><button id="sequence">依次播放整套</button></div>
+<footer>速度均为模拟值。左右使用相同循环时长；GIF 是 30 fps 查看副本，此页面按 60 fps 取帧。放大图直接使用高清素材。</footer>
+</main>
+<script>
+const source=__FRAMES__;
+let current='01-walk',clock=0,playing=true,loading=false,rate=1,last=performance.now(),revision=0,active=null,sequence=false,sequenceAt=0;
+const cache=new Map(),keysCache=new Map();
+const $=id=>document.getElementById(id),context=Object.fromEntries(['oldLarge','oldSmall','newLarge','newSmall'].map(k=>[k,$(k).getContext('2d')]));
+const names=Object.keys(source.modes),smooth=t=>t*t*(3-2*t);
+const index=(time,mode)=>Math.floor(((time/source.modes[mode].duration)%1)*source.modes[mode].frames+1e-9)%source.modes[mode].frames;
+async function decode(urls){return Promise.all(urls.map(async src=>{const image=new Image();image.src=src;await image.decode();return image;}));}
+async function load(mode){
+ if(cache.has(mode))return cache.get(mode);
+ const data=source.modes[mode],items=await Promise.all(['large','small','oldLarge','oldSmall'].map(async key=>[key,await decode(data[key])]));
+ const images=Object.fromEntries(items);cache.set(mode,images);
+ while(cache.size>3){const key=cache.keys().next().value;if(key===current){const value=cache.get(key);cache.delete(key);cache.set(key,value);}else cache.delete(key);}
+ return images;
+}
+async function loadKeys(from,to){const pair=[from,to].sort().join('_');if(!keysCache.has(pair)){const data=source.transitions[pair];keysCache.set(pair,{large:await decode(data.large),small:await decode(data.small)});while(keysCache.size>2)keysCache.delete(keysCache.keys().next().value);}return keysCache.get(pair);}
+function draw(ctx,images,amount=0){
+ ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+ ctx.globalAlpha=1-amount;ctx.drawImage(images[0],0,0,ctx.canvas.width,ctx.canvas.height);
+ if(images[1]){ctx.globalCompositeOperation='lighter';ctx.globalAlpha=amount;ctx.drawImage(images[1],0,0,ctx.canvas.width,ctx.canvas.height);}
+ ctx.globalAlpha=1;ctx.globalCompositeOperation='source-in';ctx.fillStyle=getComputedStyle(document.body).getPropertyValue('--ink').trim();ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.globalCompositeOperation='source-over';
+}
+function paint(){
+ const data=source.modes[current],images=cache.get(current);if(!images)return;
+ const n=index(clock,current),old=Math.floor((clock/data.duration%1)*data.oldSmall.length);
+ draw(context.oldLarge,[images.oldLarge[old]]);draw(context.oldSmall,[images.oldSmall[old]]);
+ for(const [size,key] of [['large','newLarge'],['small','newSmall']]){
+   if(active){
+     const start=cache.get(active.from),end=cache.get(active.to),pair=keysCache.get([active.from,active.to].sort().join('_'));
+     let keys=pair[size];if(active.from>active.to)keys=[...keys].reverse();
+     keys=[start[size][index(clock,active.from)],...keys,end[size][index(clock,active.to)]];
+     const position=Math.min(5,active.elapsed/.8*5),i=Math.min(4,Math.floor(position)),amount=smooth(position-i);
+     draw(context[key],[keys[i],keys[i+1]],amount);
+   }else draw(context[key],[images[size][n]]);
+ }
+ $('frame').max=data.frames;$('frame').value=n+1;$('position').textContent=String(n+1).padStart(3,'0')+' / '+String(data.frames).padStart(3,'0');
+ $('newTitle').textContent=active?source.modes[active.from].title+' → '+source.modes[active.to].title:data.title;
+ $('newMeta').textContent=active?'高清过渡 · 60 fps':data.frames===1?'静态待机':data.frames+' 帧 · 60 fps';
+ $('oldMeta').textContent=data.oldSmall.length+' 帧';$('description').textContent=data.description;
+ document.querySelectorAll('.rate').forEach(el=>el.textContent=data.speed+' tok/s');
+ $('status').textContent=active?'过渡 '+Math.round(active.elapsed/.8*100)+'%':data.duration+' 秒循环';
+ document.querySelectorAll('#modes button').forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.mode===current)));
+ $('transition').disabled=loading||!!active||$('destination').value===current;
+ $('sequence').textContent=sequence?'正在依次播放…':'依次播放整套';
+}
+function fail(error){$('status').textContent='载入失败：'+error.message;playing=false;loading=false;}
+async function select(mode){const version=++revision;active=null;sequence=false;loading=true;$('status').textContent='正在载入…';await load(mode);if(version!==revision)return;current=mode;clock=0;loading=false;last=performance.now();paint();}
+async function transition(to){
+ if(active||to===current)return;
+ const version=++revision;const from=current;loading=true;$('status').textContent='正在准备过渡…';
+ await load(to);await loadKeys(from,to);if(version!==revision)return;
+ active={from,to,elapsed:0};loading=false;last=performance.now();paint();
+}
+function pause(){playing=false;$('play').textContent='播放';sequence=false;}
+function seek(number){pause();active=null;const data=source.modes[current];clock=(((number-1)%data.frames+data.frames)%data.frames)/60;paint();}
+for(const mode of names){const data=source.modes[mode];const b=document.createElement('button');b.textContent=data.title;b.dataset.mode=mode;b.setAttribute('aria-pressed','false');b.onclick=()=>select(mode).catch(fail);$('modes').appendChild(b);const o=document.createElement('option');o.value=mode;o.textContent=data.title;$('destination').appendChild(o);}
+$('destination').value='06-bicycle';$('destination').onchange=paint;
+$('transition').onclick=()=>{playing=true;$('play').textContent='暂停';sequence=false;transition($('destination').value).catch(fail);};
+$('sequence').onclick=()=>{sequence=true;sequenceAt=clock;playing=true;last=performance.now();$('play').textContent='暂停';$('sequence').textContent='正在依次播放…';};
+$('theme').onclick=event=>{const dark=document.body.classList.toggle('dark');event.target.textContent=dark?'浅色背景':'深色背景';event.target.setAttribute('aria-pressed',String(dark));paint();};
+$('play').onclick=()=>{playing=!playing;last=performance.now();$('play').textContent=playing?'暂停':'播放';};
+$('speed').onchange=event=>rate=Number(event.target.value);$('frame').oninput=event=>seek(Number(event.target.value));$('previous').onclick=()=>seek(Number($('frame').value)-1);$('next').onclick=()=>seek(Number($('frame').value)+1);
+function tick(now){
+ if(playing&&!loading&&cache.has(current)){
+   const delta=Math.min(.1,(now-last)/1000)*rate;clock+=delta;
+   if(active){active.elapsed+=delta;if(active.elapsed>=.8){current=active.to;active=null;sequenceAt=clock;}}
+   if(sequence&&!active&&clock-sequenceAt>source.modes[current].duration*2){sequenceAt=clock;transition(names[(names.indexOf(current)+1)%names.length]).catch(fail);}
+   paint();
+ }
+ last=now;requestAnimationFrame(tick);
+}
+select(current).catch(fail);requestAnimationFrame(tick);
+</script>
+</html>

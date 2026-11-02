@@ -31,7 +31,9 @@ enum SpeedTier: String, CaseIterable, Identifiable {
         switch self {
         case .idle: 1
         case .walk: 96
-        default: 8
+        case .brisk: 84
+        case .run: 72
+        case .rollers, .board, .bicycle, .motorcycle, .roadster, .jetpack: 144
         }
     }
 

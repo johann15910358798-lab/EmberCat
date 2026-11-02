@@ -1,0 +1,8 @@
+{
+  "02-brisk": {"title":"快走", "frames":84, "duration":1.4, "stride":6.6, "lift":2.3, "duty":0.58, "lean":0.8, "armSwing":4.0, "handHeight":18.2, "crouch":0.25, "braid":4.0},
+  "03-run": {"title":"跑步", "frames":72, "duration":1.2, "stride":7.2, "lift":5.2, "duty":0.42, "lean":1.8, "armSwing":4.5, "handHeight":20.0, "crouch":0.35, "braid":8.0},
+  "04-rollers": {"title":"轮滑", "frames":144, "duration":2.4, "stride":5.6, "lift":2.8, "duty":0.70, "lean":1.4, "armSwing":3.4, "handHeight":19.4, "crouch":1.0, "braid":8.0},
+  "05-board": {"title":"滑板", "frames":144, "duration":2.4, "lean":1.5, "armSwing":1.5, "handHeight":18.6, "crouch":1.4, "braid":8.0},
+  "06-bicycle": {"title":"自行车", "frames":144, "duration":2.4, "scale":0.0440389294403893, "bounds":[30,60,370,465], "crank":[198,398], "crankRadius":25, "pedalTurns":2, "wheelTurns":5},
+  "09-jetpack": {"title":"飞行背包", "frames":144, "duration":2.4, "scale":0.0473, "bounds":[35,80,337,433], "emitter":[137,274]}
+}

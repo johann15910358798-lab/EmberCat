@@ -16,9 +16,13 @@ func checkMenuBarResources() -> Bool {
     var sourceIconFallbacksChecked = 0
     var unreadableSourceIconFallbackChecked = false
     var previewDetailFrames = 0
-    for style in [PetStyle.cat, .makima] {
-        let frames = SpriteLibrary.shared.walkingPreviewFrames(for: style)
-        if frames.count != 96 { failures.append("PetPreview/\(style): missing walking detail images") }
+    var transitionDetailFrames = 0
+    var liveTransitionSamples = 0
+    let detailModes: [(PetStyle, SpeedTier)] = [(.cat, .walk)]
+        + SpeedTier.allCases.map { (.makima, $0) }
+    for (style, mode) in detailModes {
+        let frames = SpriteLibrary.shared.previewFrames(for: style, mode: mode)
+        if frames.count != mode.frameCount { failures.append("PetPreview/\(style)/\(mode): missing detail images") }
         for image in frames {
             let reps = image.representations.compactMap { $0 as? NSBitmapImageRep }
             guard image.isTemplate, image.size == SpriteLibrary.imageSize, reps.count == 1,
@@ -151,6 +155,18 @@ func checkMenuBarResources() -> Bool {
             if backward.count != 4 || !zip(forward, backward.reversed()).allSatisfy({ $0 === $1 }) {
                 failures.append("\(to.rawValue)→\(from.rawValue): invalid reverse transition")
             }
+            let details = SpriteLibrary.shared.transitionFrames(from: from, to: to, detail: true)
+            let reverseDetails = SpriteLibrary.shared.transitionFrames(from: to, to: from, detail: true)
+            if details.count != 4 || !zip(details, reverseDetails.reversed()).allSatisfy({ $0 === $1 }) {
+                failures.append("\(from)→\(to): missing or incorrect reverse detail transition")
+            }
+            for image in details {
+                let reps = image.representations.compactMap { $0 as? NSBitmapImageRep }
+                if reps.count != 1 || reps[0].pixelsWide != 576 || reps[0].pixelsHigh != 320 {
+                    failures.append("\(from)→\(to): low-resolution transition key")
+                }
+                transitionDetailFrames += 1
+            }
             directedPairs += 2
         }
     }
@@ -163,21 +179,30 @@ func checkMenuBarResources() -> Bool {
             for _ in 0..<360 { director.advance(by: 1.0/30.0) }
             director.setSpeed(speeds[to.rank])
             var rendered = false
-            for _ in 0..<360 {
-                director.advance(by: 1.0/30.0)
-                guard let active = director.transition, active.progress >= 0.5 else { continue }
+            for _ in 0..<720 {
+                director.advance(by: 1.0/60.0)
+                guard let active = director.transition else {
+                    if rendered { break }
+                    continue
+                }
                 if active.from != from || active.to != to {
                     failures.append("\(label): unexpected intermediate tier")
                 }
-                if let image = SpriteLibrary.shared.image(for: .makima, director: director) {
-                    validate([image], expected: 1, label: "\(label) live composition")
-                    if let trimmed = SpriteLibrary.shared.menuBarImage(for: .makima, director: director) {
-                        validateMenuBar([image], [trimmed], label: "\(label) compact composition")
-                    } else { failures.append("\(label): missing compact transition") }
-                    renderedPairs += 1
-                } else { failures.append("\(label): renderer produced no image") }
-                rendered = true
-                break
+                autoreleasepool {
+                    if let image = SpriteLibrary.shared.image(for: .makima, director: director) {
+                        validate([image], expected: 1, label: "\(label) live composition")
+                        if let trimmed = SpriteLibrary.shared.menuBarImage(for: .makima, director: director) {
+                            validateMenuBar([image], [trimmed], label: "\(label) compact composition")
+                        } else { failures.append("\(label): missing compact transition") }
+                        if !rendered { renderedPairs += 1 }
+                    } else { failures.append("\(label): renderer produced no image") }
+                    if let detail = SpriteLibrary.shared.previewImage(for: .makima, director: director),
+                       let rep = detail.representations.first as? NSBitmapImageRep,
+                       rep.pixelsWide == 576, rep.pixelsHigh == 320 {
+                        liveTransitionSamples += 1
+                    } else { failures.append("\(label): live transition fell back to a small image") }
+                    rendered = true
+                }
             }
             if !rendered { failures.append("\(label): no live transition reached") }
         }
@@ -207,22 +232,31 @@ func checkMenuBarResources() -> Bool {
                 cadenceComparisons += 1
             }
     }
-    // Exercise the production-selected images for a whole 60 Hz walk cycle.
-    // Merely storing 96 PNGs must not pass if the playback path still repeats eight.
-    var walk = MotionDirector()
-    walk.setSpeed(3)
-    for _ in 0..<360 { walk.advance(by: 1.0/60) }
-    let firstWalkFrame = SpriteLibrary.shared.image(for: .makima, director: walk)
-    var walkFrames = Set<ObjectIdentifier>()
-    for _ in 0..<96 {
-        if let image = SpriteLibrary.shared.image(for: .makima, director: walk) {
-            walkFrames.insert(ObjectIdentifier(image))
+    // Verify production playback and detail preview both traverse the entire loop.
+    // Storing 144 PNGs alone must not pass if selection repeats the old eight.
+    var continuousFrameCounts: [String: Int] = [:]
+    for mode in SpeedTier.allCases where mode != .idle {
+        var motion = MotionDirector()
+        motion.setSpeed(speeds[mode.rank])
+        for _ in 0..<360 { motion.advance(by: 1.0/60) }
+        let firstFrame = SpriteLibrary.shared.image(for: .makima, director: motion)
+        var selected = Set<ObjectIdentifier>()
+        var selectedDetails = Set<ObjectIdentifier>()
+        for _ in 0..<mode.frameCount {
+            if let image = SpriteLibrary.shared.image(for: .makima, director: motion) {
+                selected.insert(ObjectIdentifier(image))
+            }
+            if let image = SpriteLibrary.shared.previewImage(for: .makima, director: motion) {
+                selectedDetails.insert(ObjectIdentifier(image))
+            }
+            motion.advance(by: 1.0/60)
         }
-        walk.advance(by: 1.0/60)
-    }
-    if walk.mode != .walk || walk.transition != nil || walkFrames.count != 96
-        || SpriteLibrary.shared.image(for: .makima, director: walk) !== firstWalkFrame {
-        failures.append("Makima/walk: expected 96 distinct frames and a closed 1.6 s loop at 60 Hz")
+        continuousFrameCounts[mode.rawValue] = selected.count
+        if motion.mode != mode || motion.transition != nil || selected.count != mode.frameCount
+            || selectedDetails.count != mode.frameCount
+            || SpriteLibrary.shared.image(for: .makima, director: motion) !== firstFrame {
+            failures.append("Makima/\(mode): expected \(mode.frameCount) distinct frames and a closed 60 Hz loop")
+        }
     }
     var lowCat = MotionDirector()
     lowCat.setSpeed(3)
@@ -261,8 +295,9 @@ func checkMenuBarResources() -> Bool {
     if catTransitions.count != 6 { failures.append("Cat: did not render all six gait transitions") }
     let report: [String: Any] = ["pass": failures.isEmpty, "framesChecked": checked,
         "transitionKeyframes": transitions, "directedPairs": directedPairs, "renderedPairs": renderedPairs,
-        "cadenceComparisons": cadenceComparisons, "pixelfxWalkDistinctFrames": walkFrames.count,
+        "cadenceComparisons": cadenceComparisons, "pixelfxDistinctFrames": continuousFrameCounts,
         "previewDetailFrames": previewDetailFrames,
+        "transitionDetailFrames": transitionDetailFrames, "liveTransitionSamples": liveTransitionSamples,
         "catVariableCadenceFrames": differentCatFrames, "catTransitionsRendered": catTransitions.sorted(),
         "menuBarFramesChecked": menuBarFramesChecked, "menuBarWidths": menuBarWidths,
         "sourceIconsChecked": sourceIconsChecked,

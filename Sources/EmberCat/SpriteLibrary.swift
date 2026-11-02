@@ -8,7 +8,8 @@ final class SpriteLibrary {
     private var cache: [String: [NSImage]] = [:]
     private var menuBarCache: [String: [NSImage]] = [:]
     private var menuBarBoundsCache: [String: NSRect] = [:]
-    private var previewCache: [PetStyle: [NSImage]] = [:]
+    private var previewCache: [String: [NSImage]] = [:]
+    private var previewCacheOrder: [String] = []
 
     private init() {}
 
@@ -23,12 +24,20 @@ final class SpriteLibrary {
     func catCurlFrames() -> [NSImage] { load("Cat/curl") }
 
     /// Detail images are separate from the small menu assets; never upscale a 2x PNG 8x.
-    func walkingPreviewFrames(for style: PetStyle) -> [NSImage] {
-        if let found = previewCache[style] { return found }
+    func previewFrames(for style: PetStyle, mode: SpeedTier) -> [NSImage] {
         let folderName = style == .cat ? "Cat" : "Makima"
-        guard let folder = AppResources.directory("PetPreview/\(folderName)/walk") else { return [] }
-        let frames = (1...96).compactMap { index -> NSImage? in
-            let url = folder.appendingPathComponent(String(format: "frame-%02d.png", index))
+        return loadPreview("\(folderName)/\(mode.rawValue.dropFirst(3))")
+    }
+
+    private func loadPreview(_ key: String) -> [NSImage] {
+        if let found = previewCache[key] {
+            previewCacheOrder.removeAll { $0 == key }
+            previewCacheOrder.append(key)
+            return found
+        }
+        guard let folder = AppResources.directory("PetPreview/\(key)") else { return [] }
+        let frames = frameNames(in: folder).compactMap { name -> NSImage? in
+            let url = folder.appendingPathComponent(name + ".png")
             guard let data = try? Data(contentsOf: url), let rep = NSBitmapImageRep(data: data),
                   rep.pixelsWide == 576, rep.pixelsHigh == 320 else { return nil }
             rep.size = Self.imageSize
@@ -37,21 +46,28 @@ final class SpriteLibrary {
             image.isTemplate = true
             return image
         }
-        previewCache[style] = frames
+        // A live transition needs source, destination and one keyframe set.
+        // Do not retain every 576x320 loop after browsing all nine actions.
+        while previewCacheOrder.count >= 3 {
+            previewCache.removeValue(forKey: previewCacheOrder.removeFirst())
+        }
+        previewCache[key] = frames
+        previewCacheOrder.append(key)
         return frames
     }
 
     func previewImage(for style: PetStyle, director: MotionDirector) -> NSImage? {
+        if style == .makima { return makimaImage(director: director, detail: true) }
         let phase: Double
+        let mode: SpeedTier
         if style == .cat && director.cat.gait == .walk && director.cat.transition == nil {
+            mode = .walk
             phase = director.cat.phase
-        } else if style == .makima && director.mode == .walk && director.transition == nil {
-            phase = director.clock.phase(cycleDuration: SpeedTier.walk.cycleDuration)
         } else {
             return image(for: style, director: director)
         }
-        let frames = walkingPreviewFrames(for: style)
-        guard frames.count == 96 else { return image(for: style, director: director) }
+        let frames = previewFrames(for: style, mode: mode)
+        guard frames.count == mode.frameCount else { return image(for: style, director: director) }
         return frames[AnimationClock.frameIndex(phase: phase, frameCount: frames.count)]
     }
 
@@ -97,29 +113,44 @@ final class SpriteLibrary {
         return bounds
     }
 
-    func transitionFrames(from: SpeedTier, to: SpeedTier) -> [NSImage] {
+    func transitionFrames(from: SpeedTier, to: SpeedTier, detail: Bool = false) -> [NSImage] {
         guard from != to else { return [] }
         let lower = from.rank < to.rank ? from : to
         let upper = from.rank < to.rank ? to : from
-        let frames = load("Makima/Transitions/\(lower.rawValue)_\(upper.rawValue)")
+        let pair = "\(lower.rawValue)_\(upper.rawValue)"
+        let frames = detail ? loadPreview("Makima/transitions/\(pair)")
+            : load("Makima/Transitions/\(pair)")
         return from.rank < to.rank ? frames : Array(frames.reversed())
     }
 
     func image(for style: PetStyle, director: MotionDirector) -> NSImage? {
         if style == .cat { return catImage(director.cat) }
+        return makimaImage(director: director, detail: false)
+    }
+
+    private func makimaImage(director: MotionDirector, detail: Bool) -> NSImage? {
+        func frame(_ mode: SpeedTier, phase: Double) -> NSImage? {
+            if !detail { return cycleFrame(mode: mode, phase: phase) }
+            let frames = previewFrames(for: .makima, mode: mode)
+            guard frames.count == mode.frameCount else { return nil }
+            return frames[AnimationClock.frameIndex(phase: phase, frameCount: frames.count)]
+        }
         guard let transition = director.transition else {
-            return cycleFrame(mode: director.mode,
+            return frame(director.mode,
                 phase: director.clock.phase(cycleDuration: director.mode.cycleDuration))
         }
-        guard let from = cycleFrame(mode: transition.from, phase: transition.sourcePhase),
-              let to = cycleFrame(mode: transition.to,
+        // Let the outgoing action finish moving while its first boarding pose
+        // arrives. Both ends use the live clock, including their contact effects.
+        let sourcePhase = transition.sourcePhase + transition.elapsed / transition.from.cycleDuration
+        guard let from = frame(transition.from, phase: sourcePhase),
+              let to = frame(transition.to,
                 phase: director.clock.phase(cycleDuration: transition.to.cycleDuration)) else { return nil }
-        let keys = [from] + transitionFrames(from: transition.from, to: transition.to) + [to]
+        let keys = [from] + transitionFrames(from: transition.from, to: transition.to, detail: detail) + [to]
         let position = min(Double(keys.count - 1), transition.progress * Double(keys.count - 1))
         let index = min(keys.count - 2, Int(position))
         let amount = position - Double(index)
         let eased = amount * amount * (3 - 2 * amount)
-        return blend(keys[index], keys[index + 1], amount: eased)
+        return blend(keys[index], keys[index + 1], amount: eased, densities: detail ? [16] : [1, 2])
     }
 
     func menuBarFrames(for mode: SpeedTier) -> [NSImage] {
@@ -241,13 +272,17 @@ final class SpriteLibrary {
         return frames[min(frames.count - 1, Int((p * Double(frames.count - 1)).rounded()))]
     }
 
+    private func frameNames(in folder: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
+            .filter { $0.hasPrefix("frame-") && $0.hasSuffix(".png") && !$0.contains("@") }
+            .sorted { $0.compare($1, options: .numeric) == .orderedAscending }
+            .map { String($0.dropLast(4)) }
+    }
+
     private func load(_ relative: String) -> [NSImage] {
         if let found = cache[relative] { return found }
         guard let folder = resourceFolder(relative) else { return [] }
-        let names = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? [])
-            .filter { $0.hasPrefix("frame-") && $0.hasSuffix(".png") && !$0.contains("@") }
-            .sorted().map { String($0.dropLast(4)) }
-        let frames = names.compactMap { name -> NSImage? in
+        let frames = frameNames(in: folder).compactMap { name -> NSImage? in
             let image = NSImage(size: Self.imageSize)
             for density in [1, 2] {
                 let suffix = density == 2 ? "@2x" : ""
@@ -269,15 +304,16 @@ final class SpriteLibrary {
         AppResources.directory("MenuBarPets/\(relative)")
     }
 
-    private func blend(_ from: NSImage, _ to: NSImage, amount: Double) -> NSImage {
+    private func blend(_ from: NSImage, _ to: NSImage, amount: Double, densities: [Int] = [1, 2]) -> NSImage {
         let result = NSImage(size: Self.imageSize)
-        for density in [1, 2] {
+        for density in densities {
             guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 36 * density,
                 pixelsHigh: 20 * density, bitsPerSample: 8, samplesPerPixel: 4,
                 hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0),
                 let context = NSGraphicsContext(bitmapImageRep: rep) else { continue }
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context
+            context.imageInterpolation = .high
             context.cgContext.scaleBy(x: CGFloat(density), y: CGFloat(density))
             let rect = NSRect(origin: .zero, size: Self.imageSize)
             from.draw(in: rect, from: .zero, operation: .copy, fraction: 1 - amount)

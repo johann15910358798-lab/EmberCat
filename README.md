@@ -1,27 +1,39 @@
-# EmberCat · 玛奇玛走路试验
+# EmberCat · 玛奇玛动作试验
 
 macOS 菜单栏 Agent 测速宠物。首次默认显示原创胖黑猫。左/右键点击图标打开紧凑菜单，选择「Token 来源」后在同一浮层查看各来源，左上角返回菜单。菜单内可切换玛奇玛，选择会保留到下次启动。
 
 ## 当前试验分支
 
-`codex/makima-pixelfx-walk` 基于 0.6.6 的 `600aeaa`，只试做玛奇玛走路，不是新版本发布。原工作目录中的未提交改动不在这个分支里。
+`codex/makima-pixelfx-walk` 基于 0.6.6 的 `600aeaa`，现包含九种玛奇玛连续动作和高清过渡预览，尚未发布新版本。原工作目录中的未提交改动不在这个分支里。
 
-人物的脸、刘海、辫子与衣服取自已保留的走路原画；四肢和身体由 PixelFX 固定骨长骨架驱动，脚步和刚性图层变换直接复用黑猫的 `foot_path` 与 `body_transform`。每圈 1.6 秒，96 个连续姿势，走路调度改为 60 Hz。其他玛奇玛动作与过渡沿用原版，黑猫的生产素材和控制逻辑保持原样。
+人物的脸、刘海、辫子与服装继续取自既有原画。走路、快走、跑步、轮滑和滑板使用 PixelFX 固定骨长骨架，并直接复用黑猫的 `foot_path` 与 `body_transform`。快走 84 帧 / 1.4 秒，跑步 72 帧 / 1.2 秒，走路 96 帧 / 1.6 秒；六种载具各为 144 帧 / 2.4 秒。所有运动与切换均以 60 Hz 调度，待机继续停止刷新。
 
-菜单栏仍用 36×20 pt 的 1×/2× PNG。放大预览另用从高分辨率绘图直接导出的 576×320 PNG，并启用平滑采样；不会把菜单栏的小图做最近邻放大。HTML 提供黑猫、旧版玛奇玛、实际尺寸和明暗背景对照。GIF 是 30 fps 查看副本，完整 96 帧请看 HTML 或原生预览。
+轮滑交替蹬地与收腿；滑板固定支撑脚，另一脚蹬地、收回滑行；自行车双脚沿相反的曲柄位置踩踏，车轮与辫子随动。摩托车和跑车有转轮、悬挂及后轮接地扬尘。飞行背包有悬停起伏、腿部随动、变化的喷流和尾迹。运行速度仅选择动作，不改变玛奇玛同档步频。
+
+菜单栏仍使用 36×20 pt 的 1×/2× PNG；全部动作和 45 组上下车过渡另有 576×320 高清预览。过渡按新循环实测的头部位置与大小重新配准，保留四张原画姿势，以 60 Hz 平滑混合；源动作在切换开始时继续运动。过渡仍是原画关键帧混合，放大慢放时可见短暂叠影，尚未重新逐帧绘制所有上下车动作。放大预览在过渡期间也保持高清。预览缓存最多保留三个动作/过渡集，避免浏览整套后常驻全部高清帧。
 
 ```sh
 # Node 18+；Python 需要 Pillow 与 numpy
 python3 scripts/pixelfx/render-makima.py --install
+python3 scripts/pixelfx/render-vehicles.py --install
+python3 scripts/pixelfx/render-suite.py --install
+python3 scripts/pixelfx/render-transitions.py
 python3 scripts/pixelfx/check-makima.py
-./scripts/build-pixelfx-preview.sh
-open dist/EmberCat-PixelFX-Preview.app
-open work/makima-pixelfx/comparison.html
+python3 scripts/pixelfx/check-vehicles.py
+python3 scripts/pixelfx/check-suite.py
+python3 scripts/check-motion-art.py
+./scripts/check-motion.sh
+./scripts/build-pixelfx-preview.sh suite
+python3 scripts/pixelfx/review-suite.py
+open dist/EmberCat-PixelFX-Suite-Preview.app
+open work/makima-suite/comparison.html
 ```
 
-预览应用有独立 bundle ID，启动后只打开模拟速度的动作窗口，不读取真实 Token 会话，也不覆盖 `/Applications/EmberCat.app`。本次重点是走路形象与连续性；跨动作的美术统一仍需后续处理。
+整套预览包有独立 bundle ID，启动后只打开模拟速度窗口，不读取真实 Token 会话，也不覆盖 `/Applications/EmberCat.app`。HTML 可逐档比较原版/新动画、查看实际尺寸、明暗背景、半速、逐帧，以及任意两档之间的切换。GIF 是 30 fps 查看副本；整套九动作总览播放 9.6 秒，不人为拼接不同周期的回环。完整 60 fps 请看 HTML 或原生预览。
 
-原走路的 16 张 1×/2× 文件保存在 `Artwork/Makima/PixelFX-Walk/original/`。脚本、来源哈希、静态样图与骨架记录保存在 `scripts/pixelfx/` 和 `Artwork/Makima/PixelFX-Walk/`。PixelFX 固定为 `a84159688af3ca37a4be05a0d422b94451b2e24e`，来源与本地修改见 `Vendor/PixelFX/UPSTREAM.md`。
+当前仍是既有角色原画的分层派生与动作重制，未使用新的 AI 人物原画。技术检查不代表用户认可人物造型。原走路 16 张、车辆 32 张、其余六档 96 张 1×/2× 文件分别保存在 `Artwork/Makima/PixelFX-Walk/original/`、`PixelFX-Vehicles/original/`、`PixelFX-Suite/original/`；360 张旧过渡 PNG 保存在 `PixelFX-Transitions/original/`。各自 manifest 保存来源、脚本和输出哈希。
+
+PixelFX 固定为 `a84159688af3ca37a4be05a0d422b94451b2e24e`，来源与本地修改见 `Vendor/PixelFX/UPSTREAM.md`。源码图像、黑猫生产资源和已安装应用均独立保留。
 
 ## 形象与动作
 
@@ -31,11 +43,11 @@ open work/makima-pixelfx/comparison.html
 
 猫的母图由 imagegen Skill 通过项目既有图片接口生成，不使用 RunCat 图片或图像参考；本次四种动画由现有母图离线派生。
 
-玛奇玛在 0.6.2 恢复过 0.5.2 的黑白原画。此分支仅用连续走路试作替换其中一个动作；其余待机与八种出行方式保留原画。`Artwork/Makima/original-frame-sha256.json` 对应的 146 张原文件中，130 张仍直接用于运行，另 16 张走路图作为不可变对照保存。
+玛奇玛在 0.6.2 恢复过 0.5.2 的黑白原画。此分支用连续动作替换九档循环，待机原文件不变。`Artwork/Makima/original-frame-sha256.json` 对应的 146 张原文件完整保留，其中 2 张待机图仍直接使用，144 张作为不可变对照保存。
 
-原版的 45 对形态过渡各有 4 张专门绘制的姿势，反向按逆序播放，覆盖 90 个方向。本分支保留这些过渡资源；它们与新走路的美术衔接尚未作为本次完成项。过渡按人物头部定位，匹配起点和终点动作的位置及比例，保留人物重心变化。头部定位只取头顶，不把横向辫子计入头宽；长载具从画布边缘进入，避免为了塞下整辆车而让人物突然缩小。过渡插值放缓为 0.8 秒，每段使用平滑起止。速度从 3 突然跳到 70 tok/s 时，走路直接经过上下车姿势进入自行车；70 回到 3 则直接下车走路。大幅跳速不会依次播放中间档位或不相关的交通工具。
+45 对过渡的四张原画姿势按新循环重新定位，覆盖 90 个方向。反向按逆序播放，起点/终点使用实际运动中的循环帧。过渡持续 0.8 秒，长载具可以从画布侧边进入。速度从 3 跳到 70 tok/s 时直接经过上车姿势进入自行车，回到 3 则下车走路，不依次播放无关的中间档。
 
-玛奇玛的 tok/s 只决定出行方式。走路、快走、跑步分别固定 1.6、1.4、1.2 秒一圈；全部六种载具固定 2.4 秒一圈，同一动作在低、高 tok/s 下保持相同节奏。本试验的走路调度为 60 Hz，其他玛奇玛动作仍为 30 Hz；高 tok/s 不会倍速播放。
+玛奇玛的 tok/s 只决定出行方式。走路、快走、跑步分别固定 1.6、1.4、1.2 秒一圈；六种载具固定 2.4 秒一圈。每档的帧数等于周期秒数乘以 60，高 tok/s 不会倍速播放。
 
 | 动作 | 名义分界 tok/s | 升入该档 | 低于此值开始降档确认 |
 | --- | ---: | ---: | ---: |
@@ -59,7 +71,7 @@ open work/makima-pixelfx/comparison.html
 
 黑猫站立、行走、跑动共用 32pt 图像宽度；蜷成球时按收拢进度逐渐收窄，展开时逆序恢复，球形滚动的整圈保持 17pt。点击区域在图像外保留共 8pt 边距；显示速度时另加文字宽度和 4pt 间隔。源 PNG 仍保留 36×20pt 画布与 1×/2× 图像，系统模板着色适配菜单栏明暗。待机后停止动画计时器。
 
-「动作预览…」提供实际尺寸和高分辨率走路放大预览。黑猫显示四个动作按钮、平滑加减速、3 → 140 → 0 跳速及边界防抖演示。玛奇玛保留九档选择、全套升降档、3 ↔ 70 跳速及边界防抖演示。跳速演示还包含走路→飞行背包→待机，方便查看跨多档起飞和落地。它读取同一套生产资源，运行相同状态机和过渡渲染器，使用独立模拟速度；实际菜单栏继续读取真实会话。档位按钮使用能从上下两侧进入该档的示例速度；阈值防振区内保留当前动作。
+「动作预览…」提供实际尺寸与全部玛奇玛动作、过渡的高清预览。黑猫显示四个动作按钮、平滑加减速、3 → 140 → 0 跳速及边界防抖演示。玛奇玛保留九档选择、全套升降档、3 ↔ 70 跳速及边界防抖演示。跳速演示还包含走路→飞行背包→待机，方便查看跨多档起飞和落地。它读取同一套生产资源，运行相同状态机和过渡渲染器，使用独立模拟速度；实际菜单栏继续读取真实会话。档位按钮使用能从上下两侧进入该档的示例速度；阈值防振区内保留当前动作。
 
 ## 0.6.6 来源页面
 
@@ -125,9 +137,9 @@ dist/EmberCat.app/Contents/MacOS/EmberCat --export-cat-preview /tmp/embercat-cat
 python3 scripts/render-cat-review.py /tmp/embercat-cat-review /tmp/embercat-cat-gifs
 ```
 
-原画和提示词在 `Artwork/`，猫的提示词为 `Artwork/Prompts/cat-master-v3.txt`。`scripts/motion_rigs.py` 定义猫的动作，并向本次试作提供共用的脚步与变换函数。`scripts/prepare-pets.py --cat-only` 只重建黑猫。若执行不带参数的 `prepare-pets.py`，它会恢复旧版玛奇玛资源，随后必须再运行 `scripts/pixelfx/render-makima.py --install` 才能重建本分支的 1340 张菜单栏 PNG；放大预览另有 192 张 PNG。
+原画和提示词在 `Artwork/`，猫的提示词为 `Artwork/Prompts/cat-master-v3.txt`。`scripts/motion_rigs.py` 定义猫的动作，并向本次试作提供共用的脚步与变换函数。`scripts/prepare-pets.py --cat-only` 只重建黑猫。若执行不带参数的 `prepare-pets.py`，它会恢复旧版玛奇玛资源，随后必须依次运行上方四个 PixelFX 渲染命令，才能重建本分支的 3252 张菜单栏 PNG；放大预览另有 1393 张 PNG（包含黑猫走路与 180 张过渡关键帧）。
 
-`check-motion-art.py` 检查猫的支撑与循环、圆球转动、收拢精确首尾姿势、全部模板格式、原画对照与新走路资源哈希。`scripts/pixelfx/check-makima.py` 检查骨长、脚步支撑、96 帧差异、循环接缝和来源哈希。这些检查不代替对角色形象的视觉判断。
+`check-motion-art.py` 检查猫的支撑与循环、圆球转动、收拢精确首尾姿势、全部模板格式、原画对照与新走路资源哈希。`scripts/pixelfx/check-makima.py` 检查骨长、脚步支撑、96 帧差异、循环接缝和来源哈希。`scripts/pixelfx/check-vehicles.py` 检查两个动作各 144 张不同帧、三位文件名顺序、接地扬尘可见性与方向、画布边界、首尾衔接及高分辨率资源哈希。这些检查不代替对角色形象的视觉判断。
 
 `check-cat-motion.sh` 检查猫的相位连续性、加减速上限、不同刷新率的一致性、边界防抖、转正后展开、过渡中的最新速度、全部动作之间的往返以及停止计时器。`check-motion.sh` 保留玛奇玛全部 90 个有方向状态组合、跳速、过渡、防抖与固定节奏的回归检查。
 
@@ -137,6 +149,6 @@ python3 scripts/render-cat-review.py /tmp/embercat-cat-review /tmp/embercat-cat-
 
 ## 来源
 
-测速核心来自 Agent Speed，见 `Vendor/AGENT-SPEED-LICENSE`；zstd 见 `Vendor/CZstd/LICENSE`。猫是本项目原创形象；玛奇玛为用户指定角色的同人图像，原画由项目既有生图流程生成；本分支从原画派生连续动作与菜单栏透明模板。PixelFX 为离线骨架依赖，许可见 `Vendor/PixelFX/LICENSE`。
+测速核心来自 Agent Speed，见 `Vendor/AGENT-SPEED-LICENSE`；zstd 见 `Vendor/CZstd/LICENSE`。猫是本项目原创形象；玛奇玛为用户指定角色的同人图像，原画由项目既有生图流程生成；本分支从原画派生连续动作与菜单栏透明模板。PixelFX 为离线骨架、确定性随机与缓动依赖，许可见 `Vendor/PixelFX/LICENSE`。
 
 来源 logo 的文件、上游版本、哈希及随附许可保存在 `Sources/EmberCat/Resources/SourceIcons/`；详见 `provenance.json`。图标来自 LobeHub、oh-my-pi 和 ZCode，用于标识对应来源。

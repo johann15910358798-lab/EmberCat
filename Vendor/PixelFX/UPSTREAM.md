@@ -16,3 +16,15 @@ Omitting it preserves all upstream defaults. The measurement constant was rename
 to `DEFAULT_MEASUREMENTS`; the solver itself is unchanged.
 
 Node is used only to generate the assets. The macOS application has no new runtime dependency.
+
+The vehicle renderer also uses the unchanged `core/math.js` helpers (`rng`,
+`wrap`, `smooth`, `ease`) for reproducible rear-wheel dust particles. The emitters,
+wheel animation, suspension and high-resolution raster compositor are local
+EmberCat code. No upstream pixelated painter or stock dust effect is bundled.
+
+The full-suite renderer additionally skins brisk walking, running, roller skating
+and board pushing on the same fixed-length skeleton. Cycling uses a local
+two-link pedal constraint; hovering, braid follow-through and exhaust are local
+source-art transforms. PixelFX math provides deterministic effect timing.
+All moving modes are sampled at 60 Hz. Authored boarding keyframes are registered
+to the rendered loops and composited at full preview resolution by AppKit.

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>玛奇玛 · 车辆动画对比</title>
+<link rel="icon" href="data:,">
+<style>
+  :root{color-scheme:light;--bg:#f4f3ef;--card:#fffefa;--ink:#272d2a;--muted:#69716b;--line:#d8dcd4;--accent:#376451}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+  main{max-width:1080px;margin:40px auto;padding:0 24px}header{display:flex;justify-content:space-between;align-items:center;gap:24px}
+  h1{font-size:27px;font-weight:650;letter-spacing:-.5px;margin:0 0 6px}p{margin:0;color:var(--muted)}
+  button,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:8px 15px;cursor:pointer}
+  button[aria-pressed=true]{color:white;background:var(--accent);border-color:var(--accent)}
+  button:focus-visible,select:focus-visible,input:focus-visible{outline:3px solid #65a88b;outline-offset:3px}
+  .controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:28px 0 20px}.spacer{flex:1}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{min-width:0;background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .title{padding:18px 22px 0;display:flex;justify-content:space-between;align-items:baseline}.title strong{font-size:17px}.title span{font-size:13px;color:var(--muted)}
+  .large{width:100%;height:auto;aspect-ratio:1.8;display:block;image-rendering:auto}
+  .actual{border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:15px 22px;color:var(--muted);font-size:13px}
+  .bar{display:flex;gap:6px;align-items:center;height:26px;padding:3px 10px;border:1px solid var(--line);border-radius:5px;background:var(--bg);font-size:11px;color:var(--ink);font-variant-numeric:tabular-nums}
+  .small{width:36px;height:20px;display:block}
+  .timeline{display:flex;align-items:center;gap:14px;margin:22px 0 10px}input[type=range]{flex:1;accent-color:var(--accent)}
+  output{min-width:92px;font-variant-numeric:tabular-nums;color:var(--muted)}footer{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:18px}
+  body.dark{color-scheme:dark;--bg:#202622;--card:#2a322d;--ink:#f0f4ed;--muted:#b6c1b7;--line:#465349;--accent:#57836b}
+  @media(max-width:700px){main{margin:24px auto;padding:0 16px}header{align-items:flex-start}.grid{grid-template-columns:1fr}.title span{font-size:12px}.actual{padding:12px 18px}footer{display:block}}
+</style>
+<main>
+  <header><div><h1>玛奇玛 · 车辆动画</h1><p>保留人物原画，补上转轮、悬挂起伏与后轮扬尘。</p></div><button id="theme" aria-pressed="false">深色背景</button></header>
+  <div class="controls">
+    <button id="motorcycle" aria-pressed="true">摩托车</button><button id="roadster" aria-pressed="false">敞篷跑车</button>
+    <span class="spacer"></span>
+    <button id="play">暂停</button>
+    <select id="speed" aria-label="播放速度"><option value="1">正常速度</option><option value="0.5">半速查看</option></select>
+  </div>
+  <div class="grid">
+    <section class="card"><div class="title"><strong>原版</strong><span>8 帧 · 没有扬尘</span></div><canvas id="oldLarge" class="large" width="576" height="320" aria-label="原版动画放大"></canvas><div class="actual"><span>菜单栏实际尺寸</span><span class="bar"><canvas id="old" class="small" width="72" height="40" aria-label="原版 36 × 20 尺寸"></canvas><span class="rate">91 tok/s</span></span></div></section>
+    <section class="card"><div class="title"><strong>车辆动画试作</strong><span>144 帧 · 60 fps</span></div><canvas id="newLarge" class="large" width="576" height="320" aria-label="车辆试作放大"></canvas><div class="actual"><span>菜单栏实际尺寸</span><span class="bar"><canvas id="new" class="small" width="72" height="40" aria-label="车辆试作 36 × 20 尺寸"></canvas><span class="rate">91 tok/s</span></span></div></section>
+  </div>
+  <div class="timeline"><button id="previous" aria-label="上一帧">←</button><input id="frame" aria-label="动画帧" type="range" min="1" max="144" value="1"><button id="next" aria-label="下一帧">→</button><output id="position">001 / 144</output></div>
+  <footer><span>速度为模拟值。灰尘从后轮接地点散开，随移动逐渐淡出。</span><span id="status" role="status">正在载入图片…</span></footer>
+</main>
+<script>
+const source = __FRAMES__;
+let current='07-motorcycle',images=null,loading=0,phase=0,playing=true,speed=1,last=performance.now();
+const frame=document.getElementById('frame'),position=document.getElementById('position');
+const contexts=Object.fromEntries(['old','oldLarge','new','newLarge'].map(key=>[key,document.getElementById(key).getContext('2d')]));
+function paint(){
+  if(!images)return;
+  const ink=getComputedStyle(document.body).getPropertyValue('--ink').trim();
+  for(const [key,ctx] of Object.entries(contexts)){
+    const list=images[key],image=list[Math.min(list.length-1,Math.floor(phase*list.length))];
+    ctx.clearRect(0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+    ctx.drawImage(image,0,0,ctx.canvas.width,ctx.canvas.height);
+    ctx.globalCompositeOperation='source-in';ctx.fillStyle=ink;ctx.fillRect(0,0,ctx.canvas.width,ctx.canvas.height);ctx.globalCompositeOperation='source-over';
+  }
+  const index=Math.min(144,Math.floor(phase*144)+1);
+  frame.value=String(index);position.textContent=String(index).padStart(3,'0')+' / 144';
+}
+async function select(mode){
+  current=mode;const revision=++loading;
+  images=null;document.getElementById('status').textContent='正在载入图片…';
+  document.getElementById('motorcycle').setAttribute('aria-pressed',String(mode==='07-motorcycle'));
+  document.getElementById('roadster').setAttribute('aria-pressed',String(mode==='08-roadster'));
+  document.querySelectorAll('.rate').forEach(el=>el.textContent=mode==='07-motorcycle'?'91 tok/s':'125 tok/s');
+  const entries=await Promise.all(Object.keys(contexts).map(async key=>[key,await Promise.all(source[mode][key].map(async url=>{
+    const im=new Image();im.src=url;await im.decode();return im;
+  }))]));
+  if(revision!==loading)return;
+  images=Object.fromEntries(entries);phase=0;last=performance.now();paint();
+  document.getElementById('status').textContent=source[mode].title+' · 2.4 秒循环';
+}
+function pause(){playing=false;document.getElementById('play').textContent='播放';}
+function seek(index){pause();phase=(((index-1)%144+144)%144)/144;paint();}
+document.getElementById('motorcycle').onclick=()=>select('07-motorcycle');
+document.getElementById('roadster').onclick=()=>select('08-roadster');
+document.getElementById('play').onclick=()=>{playing=!playing;last=performance.now();document.getElementById('play').textContent=playing?'暂停':'播放';};
+document.getElementById('speed').onchange=event=>speed=Number(event.target.value);
+document.getElementById('theme').onclick=event=>{
+  const dark=document.body.classList.toggle('dark');event.target.textContent=dark?'浅色背景':'深色背景';event.target.setAttribute('aria-pressed',String(dark));paint();
+};
+frame.oninput=event=>seek(Number(event.target.value));
+document.getElementById('previous').onclick=()=>seek(Number(frame.value)-1);
+document.getElementById('next').onclick=()=>seek(Number(frame.value)+1);
+function tick(now){if(playing&&images){phase=(phase+(now-last)/2400*speed)%1;paint();}last=now;requestAnimationFrame(tick);}
+select(current).catch(error=>document.getElementById('status').textContent='图片载入失败：'+error.message);
+requestAnimationFrame(tick);
+</script>
+</html>

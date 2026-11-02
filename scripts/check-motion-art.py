@@ -23,7 +23,7 @@ for path in RES.rglob('*.png'):
             assert box[0]>0 and box[2]<image.width,(path,'steady pose touches canvas edge')
         assert all(pixel[:3]==(0,0,0) for pixel in image.get_flattened_data()),path
     report['PNG']+=1
-assert report['PNG']==1340
+assert report['PNG']==3252
 cat_sheets={name:sheet for name,sheet in metadata['sheets'].items() if name.startswith('Cat/')}
 assert {name:sheet['frames'] for name,sheet in cat_sheets.items()}=={
     'Cat/idle':1,'Cat/walk':96,'Cat/run':96,'Cat/roll':96,'Cat/curl':40}
@@ -108,32 +108,45 @@ for suffix in ('','@2x'):
         'exactRunAndBallEndpoints':True,'distinctRollingFrames':96})
 report['curl']=curl_checks
 report['roundBallBounds']=True
-# The experiment replaces only walk. Its originals remain byte-identical in
-# the reference folder; all other original poses remain in runtime resources.
+# Every animated mode preserves its original PNGs in reference folders.
+# The static idle still uses its original menu images byte for byte.
 original=json.loads((ROOT/'Artwork/Makima/original-frame-sha256.json').read_text())
 import hashlib
 preserved_runtime=0
 preserved_reference=0
+references={
+    '01-walk':ROOT/'Artwork/Makima/PixelFX-Walk/original',
+    '07-motorcycle':ROOT/'Artwork/Makima/PixelFX-Vehicles/original/07-motorcycle',
+    '08-roadster':ROOT/'Artwork/Makima/PixelFX-Vehicles/original/08-roadster'}
+references.update({mode:ROOT/'Artwork/Makima/PixelFX-Suite/original'/mode for mode in
+    ['02-brisk','03-run','04-rollers','05-board','06-bicycle','09-jetpack']})
 for name,digest in original['frames'].items():
-    if name.startswith('Makima/Modes/01-walk/'):
-        path=ROOT/'Artwork/Makima/PixelFX-Walk/original'/Path(name).name
+    mode=Path(name).parent.name
+    if mode in references:
+        path=references[mode]/Path(name).name
         preserved_reference+=1
     else:
         path=RES/name
         preserved_runtime+=1
     assert hashlib.sha256(path.read_bytes()).hexdigest()==digest,(name,'original artwork changed')
 assert len(original['frames'])==146
-assert (preserved_runtime,preserved_reference)==(130,16)
+assert (preserved_runtime,preserved_reference)==(2,144)
 trial=json.loads((ROOT/'Artwork/Makima/PixelFX-Walk/manifest.json').read_text())
 assert trial['frames']==96 and trial['fps']==60 and trial['duration']==1.6
 assert len(trial['render']['sha256'])==192
 for name,digest in trial['render']['sha256'].items():
     assert hashlib.sha256((RES/'Makima/Modes/01-walk'/name).read_bytes()).hexdigest()==digest,(name,'trial provenance mismatch')
 report['originalMakimaRuntimePNGsUnchanged']=preserved_runtime
-report['originalWalkReferencePNGsUnchanged']=preserved_reference
+report['originalReferencePNGsUnchanged']=preserved_reference
 report['originalPoseCounts']={name:sheet['frames'] for name,sheet in metadata['sheets'].items()
     if name.startswith('Makima/Modes/')}
-assert sorted(report['originalPoseCounts'].values())==[1]+[8]*8+[96]
+assert sorted(report['originalPoseCounts'].values())==[1,72,84,96]+[144]*6
+vehicles=json.loads((ROOT/'Artwork/Makima/PixelFX-Vehicles/manifest.json').read_text())
+for mode,data in vehicles['modes'].items():
+    assert len(data['render']['sha256'])==288
+    for name,digest in data['render']['sha256'].items():
+        path=RES/'Makima/Modes'/mode/name
+        assert hashlib.sha256(path.read_bytes()).hexdigest()==digest,(path,'vehicle provenance mismatch')
 registered=0
 for name,sheet in metadata['sheets'].items():
     if '/Transitions/' not in name: continue
@@ -152,6 +165,6 @@ report['registeredTransitionSets']=registered
 if len(sys.argv)>1:
     Path(sys.argv[1]).write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({'pass':True,'PNG':report['PNG'],'catLoops':3,'roundBall':True,'curlEndpointsExact':True,
-    'originalMakimaRuntimePNGsUnchanged':130,'originalWalkReferencePNGsUnchanged':16,
-    'pixelfxWalkFrames':96,'catBodyMovementBounded':True,
+    'originalMakimaRuntimePNGsUnchanged':2,'originalReferencePNGsUnchanged':144,
+    'pixelfxWalkFrames':96,'pixelfxVehicleFramesPerMode':144,'catBodyMovementBounded':True,
     'registeredTransitionSets':registered}))

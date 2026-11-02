@@ -1,0 +1,43 @@
+{
+  "07-motorcycle": {
+    "scale": 0.048525469168900805,
+    "bounds": [23, 97, 379, 466],
+    "wheels": [[84, 405, 38], [319, 405, 38]],
+    "turns": 6,
+    "pivot": [200, 360],
+    "suspensionBand": [325, 400],
+    "bob": 3.3,
+    "pitch": 0.22,
+    "braidRoot": 156,
+    "braidBand": [175, 263],
+    "braidAmplitude": 11,
+    "forkMasks": [
+      [[72, 392], [93, 385], [203, 407], [208, 427], [110, 417], [73, 413]],
+      [[277, 316], [295, 316], [329, 403], [330, 418], [307, 421], [292, 375]]
+    ],
+    "dustCount": 14,
+    "dustLife": 0.82,
+    "dustVelocity": 9.4,
+    "dustRadius": 1.08,
+    "seed": 7407
+  },
+  "08-roadster": {
+    "scale": 0.06350877192982457,
+    "bounds": [17, 141, 377, 425],
+    "wheels": [[83, 383, 28], [305, 383, 28]],
+    "turns": 8,
+    "pivot": [198, 345],
+    "suspensionBand": [322, 367],
+    "bob": 2.4,
+    "pitch": 0.16,
+    "braidRoot": 120,
+    "braidBand": [218, 292],
+    "braidAmplitude": 10,
+    "forkMasks": [],
+    "dustCount": 18,
+    "dustLife": 0.70,
+    "dustVelocity": 9.7,
+    "dustRadius": 1.20,
+    "seed": 8508
+  }
+}

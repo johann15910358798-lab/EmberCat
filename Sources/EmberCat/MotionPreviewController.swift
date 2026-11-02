@@ -46,7 +46,11 @@ final class MotionPreviewController: NSWindowController {
     init(style: PetStyle? = nil) {
         let walkStudy = CommandLine.arguments.contains("--preview-pixelfx-walk")
             || Bundle.main.object(forInfoDictionaryKey: "EmberCatPixelFXWalkPreview") as? Bool == true
-        self.style = style ?? (walkStudy ? .makima
+        let vehicleStudy = CommandLine.arguments.contains("--preview-pixelfx-vehicles")
+            || Bundle.main.object(forInfoDictionaryKey: "EmberCatPixelFXVehiclePreview") as? Bool == true
+        let suiteStudy = CommandLine.arguments.contains("--preview-pixelfx-suite")
+            || Bundle.main.object(forInfoDictionaryKey: "EmberCatPixelFXSuitePreview") as? Bool == true
+        self.style = style ?? (walkStudy || vehicleStudy || suiteStudy ? .makima
             : UserDefaults.standard.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 640),
             styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
@@ -55,12 +59,14 @@ final class MotionPreviewController: NSWindowController {
         super.init(window: window)
         window.center()
         buildContent()
-        if walkStudy {
-            window.title = "EmberCat · 玛奇玛走路试作"
-            slider.doubleValue = 3
-            director.setSpeed(3)
+        if walkStudy || vehicleStudy || suiteStudy {
+            window.title = suiteStudy ? "EmberCat · 玛奇玛整套动作预览"
+                : vehicleStudy ? "EmberCat · 玛奇玛车辆试作" : "EmberCat · 玛奇玛走路试作"
+            slider.doubleValue = vehicleStudy ? 91 : 3
+            director.setSpeed(slider.doubleValue)
             for _ in 0..<360 { director.advance(by: 1.0/60) }
             render()
+            if suiteStudy { demo = .all; demoStart = ProcessInfo.processInfo.systemUptime }
         }
     }
 
@@ -167,7 +173,7 @@ final class MotionPreviewController: NSWindowController {
         makimaButtons.isHidden = style != .makima
         subtitle.stringValue = style == .cat
             ? "站立、行走、跑动、蜷成球滚动；随 tok/s 平滑加减速。预览使用模拟速度。"
-            : "走路为 PixelFX 96 帧试作，其余动作保留原画。预览使用模拟速度。"
+            : "九种连续动作，补齐蹬地、踩踏、转轮、扬尘与喷流。预览使用模拟速度。"
         hint.stringValue = style == .cat
             ? "蜷起后整圈翻滚；减速时转正、展开落地。菜单栏继续使用真实速度。"
             : "升降档有防振区间、持续确认与最短停留；已开始的过渡会完整播放。"

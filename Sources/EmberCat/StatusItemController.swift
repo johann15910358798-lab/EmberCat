@@ -118,7 +118,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
 
         // Also advances confirmation timers and hand-drawn transition frames.
-        let interval = style == .cat || director.mode == .walk ? 1.0 / 60.0 : 1.0 / 30.0
+        let interval = 1.0 / 60.0
         guard timer == nil || timerInterval != interval else { return }
         timer?.invalidate()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
@@ -224,7 +224,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private func applyFrame() {
         let count = style == .cat ? director.cat.gait.frameCount : director.mode.frameCount
         let active = style == .makima ? director.transition : nil
-        let transitionKey = active.map { "\($0.from.rawValue)_\($0.to.rawValue)_\(Int($0.progress * 30))" } ?? ""
+        let transitionKey = active.map { "\($0.from.rawValue)_\($0.to.rawValue)_\(Int($0.elapsed * 60 + 1e-9))" } ?? ""
         let index = director.clock.frameIndex(frameCount: count, cycleDuration: director.mode.cycleDuration)
         let key = style == .cat
             ? FrameKey(style: style, mode: director.cat.frameKey, transition: "", index: 0)
