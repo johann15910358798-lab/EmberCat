@@ -23,9 +23,14 @@ for path in RES.rglob('*.png'):
             assert box[0]>0 and box[2]<image.width,(path,'steady pose touches canvas edge')
         assert all(pixel[:3]==(0,0,0) for pixel in image.get_flattened_data()),path
     report['PNG']+=1
-assert report['PNG']==652
+assert report['PNG']==1164
+cat_sheets={name:sheet for name,sheet in metadata['sheets'].items() if name.startswith('Cat/')}
+assert {name:sheet['frames'] for name,sheet in cat_sheets.items()}=={
+    'Cat/idle':1,'Cat/walk':96,'Cat/run':96,'Cat/roll':96,'Cat/curl':40}
+assert len({(s['scale'],tuple(s['fixedEnvelope'])) for s in cat_sheets.values()})==1,(
+    'Cat actions must share one scale, registration and ground line')
 for name,sheet in metadata['sheets'].items():
-    if 'rig' not in sheet: continue
+    if 'rig' not in sheet or name.endswith(('/idle','/curl')): continue
     loop={'name':name,'frames':sheet['frames'],'scales':[]}
     for density in (1,2):
         paths=sorted((RES/name).glob('*@2x.png')) if density==2 else sorted(
@@ -42,7 +47,7 @@ for name,sheet in metadata['sheets'].items():
         maximum=max(diffs[:-1])
         assert diffs[-1] <= maximum*1.3+0.05,(name,density,'loop-seam discontinuity')
         # A large spike catches dropped poses or unregistered artwork.
-        limit=4.5 if name.endswith(('walk','brisk','run')) and name.startswith('Makima') else 1.2
+        limit={'Cat/walk':1.4,'Cat/run':2.6,'Cat/roll':1.3}[name]
         assert max(diffs)<=limit,(name,density,'abrupt pose change')
         loop['scales'].append({'density':density,'distinctHeadCrops':head_variants,
             'maxMeanAlphaStep':max(diffs),'seamMeanAlphaStep':diffs[-1]})
@@ -80,7 +85,29 @@ for name,sheet in metadata['sheets'].items():
                 'swingMovesForward':True,'clearancePoints':clearance*scale})
         loop['gait']={'headTravelPoints':span,'maxHeadStepPoints':max(steps),'legs':legs}
     report['loops'].append(loop)
-assert len(report['loops'])==1
+assert len(report['loops'])==3
+roll=cat_sheets['Cat/roll']
+for box in roll['bounds']:
+    assert .98<(box[2]-box[0])/(box[3]-box[1])<1.02,('rolling body is not a circle',box)
+    assert abs((box[0]+box[2])/2-520)<=1 and abs((box[1]+box[3])/2-515)<=1,(
+        'rolling ball wobbles around its rotation center',box)
+curl_checks=[]
+for suffix in ('','@2x'):
+    curl_paths=sorted((RES/'Cat/curl').glob(f'*{suffix}.png')) if suffix else sorted(
+        p for p in (RES/'Cat/curl').glob('*.png') if '@' not in p.name)
+    frames=[Image.open(p).getchannel('A') for p in curl_paths]
+    assert (RES/f'Cat/curl/frame-01{suffix}.png').read_bytes()==(RES/f'Cat/run/frame-01{suffix}.png').read_bytes()
+    assert (RES/f'Cat/curl/frame-40{suffix}.png').read_bytes()==(RES/f'Cat/roll/frame-01{suffix}.png').read_bytes()
+    steps=[ImageStat.Stat(ImageChops.difference(a,b)).mean[0] for a,b in zip(frames,frames[1:])]
+    assert max(steps)<5.6,('abrupt curl pose change',suffix,max(steps))
+    rolling=sorted((RES/'Cat/roll').glob('*@2x.png')) if suffix else sorted(
+        p for p in (RES/'Cat/roll').glob('*.png') if '@' not in p.name)
+    assert len({Image.open(p).getchannel('A').tobytes() for p in rolling})==96,(
+        'ball has no visible turning detail')
+    curl_checks.append({'density':2 if suffix else 1,'maxMeanAlphaStep':max(steps),
+        'exactRunAndBallEndpoints':True,'distinctRollingFrames':96})
+report['curl']=curl_checks
+report['roundBallBounds']=True
 # Protect the restoration contract: every original drawing at BOTH scales is
 # identical to the 0.5.2 original-art release, rather than a new interpretation.
 original=json.loads((ROOT/'Artwork/Makima/original-frame-sha256.json').read_text())
@@ -109,6 +136,6 @@ assert registered==45
 report['registeredTransitionSets']=registered
 if len(sys.argv)>1:
     Path(sys.argv[1]).write_text(json.dumps(report,indent=2)+'\n')
-print(json.dumps({'pass':True,'PNG':report['PNG'],'catLoops':1,
+print(json.dumps({'pass':True,'PNG':report['PNG'],'catLoops':3,'roundBall':True,'curlEndpointsExact':True,
     'originalMakimaPNGRestoredExactly':146,'catBodyMovementBounded':True,
     'registeredTransitionSets':registered}))

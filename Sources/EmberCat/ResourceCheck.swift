@@ -58,19 +58,39 @@ func checkMenuBarResources() -> Bool {
             }
         }
     }
-    for style in PetStyle.allCases {
-        let modes = style == .cat ? [SpeedTier.idle, .run] : SpeedTier.allCases
-        for mode in modes {
-            validate(SpriteLibrary.shared.frames(for: style, mode: mode),
-                expected: style.frameCount(for: mode),
-                label: "\(style.rawValue)/\(mode.rawValue)")
-            let trimmed = SpriteLibrary.shared.menuBarFrames(for: style, mode: mode)
-            let label = "\(style.rawValue)/\(mode.rawValue)"
-            validateMenuBar(SpriteLibrary.shared.frames(for: style, mode: mode), trimmed, label: label)
-            menuBarWidths[label] = trimmed.first?.size.width
-            if style == .makima && (trimmed.first?.size.width ?? 36) >= 36 {
-                failures.append("\(label): transparent side margins were not removed")
-            }
+    for gait in CatGait.allCases {
+        let label = "Cat/\(gait.rawValue)"
+        let frames = SpriteLibrary.shared.catFrames(for: gait)
+        let trimmed = SpriteLibrary.shared.catMenuBarFrames(for: gait)
+        validate(frames, expected: gait.frameCount, label: label)
+        validateMenuBar(frames, trimmed, label: label)
+        menuBarWidths[label] = trimmed.first?.size.width
+        if (trimmed.first?.size.width ?? 36) >= 36 {
+            failures.append("\(label): transparent side margins were not removed")
+        }
+    }
+    let curl = SpriteLibrary.shared.catCurlFrames()
+    let trimmedCurl = SpriteLibrary.shared.catMenuBarCurlFrames()
+    validate(curl, expected: CatMotion.curlFrameCount, label: "Cat/curl")
+    if trimmedCurl.count != curl.count { failures.append("Cat/curl: missing compact frames") }
+    for (index, pair) in zip(curl, trimmedCurl).enumerated() {
+        validateMenuBar([pair.0], [pair.1], label: "Cat/curl/\(index)")
+        if index > 0 && pair.1.size.width > trimmedCurl[index - 1].size.width {
+            failures.append("Cat/curl: occupied width expands while curling")
+        }
+    }
+    if trimmedCurl.first?.size != SpriteLibrary.shared.catMenuBarFrames(for: .run).first?.size
+        || trimmedCurl.last?.size != SpriteLibrary.shared.catMenuBarFrames(for: .roll).first?.size {
+        failures.append("Cat/curl: compact width jumps at a transition endpoint")
+    }
+    for mode in SpeedTier.allCases {
+        let label = "Makima/\(mode.rawValue)"
+        validate(SpriteLibrary.shared.frames(for: mode), expected: mode.frameCount, label: label)
+        let trimmed = SpriteLibrary.shared.menuBarFrames(for: mode)
+        validateMenuBar(SpriteLibrary.shared.frames(for: mode), trimmed, label: label)
+        menuBarWidths[label] = trimmed.first?.size.width
+        if (trimmed.first?.size.width ?? 36) >= 36 {
+            failures.append("\(label): transparent side margins were not removed")
         }
     }
     for from in SpeedTier.allCases {
@@ -114,37 +134,69 @@ func checkMenuBarResources() -> Bool {
         }
     }
     // Compare production-selected images, not just mathematical clock phases.
-    for style in PetStyle.allCases {
-        let modes = style == .cat ? [SpeedTier.walk] : SpeedTier.allCases.filter { $0 != .idle }
-        for mode in modes {
+    for mode in SpeedTier.allCases where mode != .idle {
             var low = MotionDirector()
             low.setSpeed(speeds[mode.rank])
             for _ in 0..<360 { low.advance(by: 1.0/30.0) }
             var high = low
             let lower = SpeedTier.fallThreshold(at: mode.rank)
             let upper = mode == .jetpack ? 1000 : SpeedTier.riseThreshold(at: mode.rank+1)
-            low.setSpeed(style == .cat ? 3 : lower+(upper-lower)*0.2)
-            high.setSpeed(style == .cat ? 1000 : lower+(upper-lower)*0.8)
+            low.setSpeed(lower+(upper-lower)*0.2)
+            high.setSpeed(lower+(upper-lower)*0.8)
             for _ in 0..<600 {
                 low.advance(by: 1.0/30.0)
                 high.advance(by: 1.0/30.0)
-                if style == .makima && (low.mode != mode || high.mode != mode
-                    || low.transition != nil || high.transition != nil) {
-                    failures.append("\(style)/\(mode): unexpected tier change in cadence check")
+                if low.mode != mode || high.mode != mode || low.transition != nil || high.transition != nil {
+                    failures.append("Makima/\(mode): unexpected tier change in cadence check")
                     break
                 }
-                guard let a = SpriteLibrary.shared.image(for: style, director: low),
-                      let b = SpriteLibrary.shared.image(for: style, director: high), a === b else {
-                    failures.append("\(style)/\(mode): token rate changed the rendered frame")
+                guard let a = SpriteLibrary.shared.image(for: .makima, director: low),
+                      let b = SpriteLibrary.shared.image(for: .makima, director: high), a === b else {
+                    failures.append("Makima/\(mode): token rate changed the rendered frame")
                     break
                 }
                 cadenceComparisons += 1
             }
+    }
+    var lowCat = MotionDirector()
+    lowCat.setSpeed(3)
+    var highCat = MotionDirector()
+    highCat.setSpeed(14)
+    for _ in 0..<720 { lowCat.advance(by: 1.0/60); highCat.advance(by: 1.0/60) }
+    var differentCatFrames = 0
+    for _ in 0..<240 {
+        lowCat.advance(by: 1.0/60); highCat.advance(by: 1.0/60)
+        guard let a = SpriteLibrary.shared.image(for: .cat, director: lowCat),
+              let b = SpriteLibrary.shared.image(for: .cat, director: highCat) else {
+            failures.append("Cat: missing cadence comparison image"); break
+        }
+        if a !== b { differentCatFrames += 1 }
+    }
+    if differentCatFrames < 200 || highCat.cat.cyclesPerSecond <= lowCat.cat.cyclesPerSecond {
+        failures.append("Cat: higher token rate did not accelerate the same walking action")
+    }
+    var catDirector = MotionDirector()
+    var catTransitions = Set<String>()
+    for speed in [8.0, 45, 140, 0] {
+        catDirector.setSpeed(speed)
+        for _ in 0..<720 {
+            catDirector.advance(by: 1.0/60)
+            guard let active = catDirector.cat.transition, active.progress >= 0.5 else { continue }
+            let key = "\(active.from.rawValue)-\(active.to.rawValue)"
+            guard !catTransitions.contains(key) else { continue }
+            catTransitions.insert(key)
+            if let image = SpriteLibrary.shared.image(for: .cat, director: catDirector),
+               let trimmed = SpriteLibrary.shared.menuBarImage(for: .cat, director: catDirector) {
+                validate([image], expected: 1, label: "Cat/\(key) composition")
+                validateMenuBar([image], [trimmed], label: "Cat/\(key) compact composition")
+            } else { failures.append("Cat/\(key): missing live composition") }
         }
     }
+    if catTransitions.count != 6 { failures.append("Cat: did not render all six gait transitions") }
     let report: [String: Any] = ["pass": failures.isEmpty, "framesChecked": checked,
         "transitionKeyframes": transitions, "directedPairs": directedPairs, "renderedPairs": renderedPairs,
         "cadenceComparisons": cadenceComparisons,
+        "catVariableCadenceFrames": differentCatFrames, "catTransitionsRendered": catTransitions.sorted(),
         "menuBarFramesChecked": menuBarFramesChecked, "menuBarWidths": menuBarWidths,
         "template": true, "logicalSize": [36,20], "scales": [1,2], "failures": failures]
     if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),

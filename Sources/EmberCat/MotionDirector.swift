@@ -22,6 +22,7 @@ struct MotionDirector {
     private(set) var rawSpeed: Double = 0
     private(set) var filteredSpeed: Double = 0
     private(set) var clock = AnimationClock()
+    private(set) var cat = CatMotion()
     private(set) var pending: SpeedTier?
     private var pendingElapsed: Double = 0
     private var dwellRemaining: Double = 0
@@ -39,10 +40,12 @@ struct MotionDirector {
 
     mutating func setSpeed(_ value: Double) {
         rawSpeed = value.isFinite ? max(0, value) : 0
+        cat.setSpeed(value)
     }
 
     mutating func advance(by elapsed: TimeInterval) {
         guard elapsed.isFinite, elapsed > 0 else { return }
+        cat.advance(by: elapsed)
         // A long sleep is not evidence that a newly received speed held steady.
         let delta = min(elapsed, 0.25)
         let tau = rawSpeed > filteredSpeed ? 0.35 : 0.7

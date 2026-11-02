@@ -25,7 +25,7 @@ func exportMotionPreview(to folder: URL) throws {
                 "rawSpeed": director.rawSpeed, "filteredSpeed": director.filteredSpeed,
                 "mode": director.mode.rawValue,
                 "phase": director.clock.phase(cycleDuration: director.mode.cycleDuration),
-                "catPhase": director.clock.phase, "title": director.title]
+                "catPhase": director.cat.phase, "title": director.title]
             if let transition = director.transition {
                 row["transition"] = ["from": transition.from.rawValue, "to": transition.to.rawValue,
                     "progress": transition.progress, "sourcePhase": transition.sourcePhase]
@@ -63,16 +63,15 @@ private func writePreviewImage(style: PetStyle, director: MotionDirector, to fil
 }
 
 /// Paired inputs share the same starting clock; their production-rendered
-/// frames must remain synchronized even while the cat crosses speed tiers.
+/// Makima frames must remain synchronized within each art-directed action.
 @MainActor
 private func exportCadencePreview(to folder: URL) throws {
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
     let speeds: [Double] = [0, 3, 12, 24, 36, 50, 67.6, 91, 125, 185]
-    let scenes = [(PetStyle.cat, SpeedTier.idle), (PetStyle.cat, SpeedTier.walk)]
-        + SpeedTier.allCases.map { (PetStyle.makima, $0) }
+    let scenes = SpeedTier.allCases.map { (PetStyle.makima, $0) }
     var report: [[String: Any]] = []
     for (style, mode) in scenes {
-        let name = style == .cat ? (mode == .idle ? "cat-idle" : "cat") : mode.rawValue
+        let name = mode.rawValue
         let sceneFolder = folder.appendingPathComponent(name, isDirectory: true)
         try FileManager.default.createDirectory(at: sceneFolder, withIntermediateDirectories: true)
         var low = MotionDirector()
@@ -81,9 +80,8 @@ private func exportCadencePreview(to folder: URL) throws {
         var high = low
         let lower = SpeedTier.fallThreshold(at: mode.rank)
         let upper = mode == .jetpack ? 1000 : SpeedTier.riseThreshold(at: mode.rank+1)
-        low.setSpeed(mode == .idle ? 0 : (style == .cat ? 3 : lower+(upper-lower)*0.2))
-        high.setSpeed(mode == .idle ? 0 : (style == .cat ? 1000 : lower+(upper-lower)*0.8))
-        // Complete any cat tier change before the paired review begins.
+        low.setSpeed(mode == .idle ? 0 : lower+(upper-lower)*0.2)
+        high.setSpeed(mode == .idle ? 0 : lower+(upper-lower)*0.8)
         for _ in 0..<120 {
             low.advance(by: 1.0/30.0)
             high.advance(by: 1.0/30.0)
@@ -97,15 +95,72 @@ private func exportCadencePreview(to folder: URL) throws {
             try writePreviewImage(style: style, director: low, to: sceneFolder.appendingPathComponent(lowFile))
             try writePreviewImage(style: style, director: high, to: sceneFolder.appendingPathComponent(highFile))
             frames.append(["tick": tick, "low": lowFile, "high": highFile,
-                "phase": low.clock.phase(cycleDuration: style.cycleDuration(for: mode))])
+                "phase": low.clock.phase(cycleDuration: mode.cycleDuration)])
         }
         report.append(["name": name, "style": style.rawValue,
-            "title": style == .cat ? "\(style.displayName) · \(mode == .idle ? "待机" : "行走")" : mode.compactTitle,
+            "title": mode.compactTitle,
             "lowSpeed": low.rawSpeed, "highSpeed": high.rawSpeed,
-            "cycleDuration": style.cycleDuration(for: mode), "frames": frames])
+            "cycleDuration": mode.cycleDuration, "frames": frames])
     }
     let data = try JSONSerialization.data(withJSONObject: ["fps": 30, "duration": 9.6, "scenes": report],
         options: [.sortedKeys])
     try data.write(to: folder.appendingPathComponent("trace.json"))
-    print("Exported cat idle/walk and all 10 Makima modes at fixed playback cadence")
+    print("Exported all 10 Makima modes at fixed playback cadence")
+}
+
+/// Cat demos use isolated synthetic rates and the exact production state/render path.
+@MainActor
+func exportCatPreview(to folder: URL) throws {
+    let schedule: [(Double, Double)] = [(0,1.5), (8,5.5), (45,5), (140,6), (45,4), (8,4), (0,7)]
+    let duration = schedule.reduce(0) { $0 + $1.1 }
+    try exportCatScene(to: folder.appendingPathComponent("sequence"), duration: duration) { time in
+        var end = 0.0
+        for (speed, length) in schedule {
+            end += length
+            if time < end { return speed }
+        }
+        return 0
+    }
+    try exportCatScene(to: folder.appendingPathComponent("ramp"), duration: 36) { t in
+        t < 2 ? 0 : t < 16 ? (t-2)/14*160 : t < 22 ? 160 : t < 30 ? (30-t)/8*160 : 0
+    }
+    for (gait, speed) in zip(CatGait.allCases, [0.0, 8, 45, 140]) {
+        try exportCatScene(to: folder.appendingPathComponent("actions/\(gait.rawValue)"),
+            duration: 4, warmUpSpeed: speed) { _ in speed }
+    }
+    print("Exported four cat actions, continuous acceleration and physical curl/unfurl to \(folder.path)")
+}
+
+@MainActor
+private func exportCatScene(to folder: URL, duration: Double, warmUpSpeed: Double = 0,
+    speedAtTime: (Double) -> Double) throws {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    var director = MotionDirector()
+    director.setSpeed(warmUpSpeed)
+    for _ in 0..<720 { director.advance(by: 1.0/60) }
+    var trace: [[String: Any]] = []
+    for tick in 0..<Int((duration * 60).rounded()) {
+        let time = Double(tick) / 60
+        director.setSpeed(speedAtTime(time))
+        director.advance(by: 1.0/60)
+        let filename = String(format: "frame-%04d.png", tick)
+        try writePreviewImage(style: .cat, director: director, to: folder.appendingPathComponent(filename))
+        let motion = director.cat
+        var row: [String: Any] = ["file": filename, "time": time, "rawSpeed": director.rawSpeed,
+            "filteredSpeed": motion.filteredSpeed, "gait": motion.gait.rawValue,
+            "phase": motion.phase, "cyclesPerSecond": motion.cyclesPerSecond,
+            "title": motion.title, "revolutions": motion.revolutions,
+            "compactWidth": SpriteLibrary.shared.menuBarImage(for: .cat, director: director)?.size.width ?? 0]
+        if let active = motion.transition {
+            row["transition"] = ["kind": active.kind.rawValue, "from": active.from.rawValue,
+                "to": active.to.rawValue, "progress": active.progress]
+        }
+        if let target = motion.aligningTo { row["aligningTo"] = target.rawValue }
+        trace.append(row)
+    }
+    try JSONSerialization.data(withJSONObject: trace, options: [.sortedKeys])
+        .write(to: folder.appendingPathComponent("trace.json"))
+    try JSONSerialization.data(withJSONObject: ["fps": 60, "duration": duration,
+        "source": "production renderer with isolated synthetic speed input"], options: [.sortedKeys])
+        .write(to: folder.appendingPathComponent("manifest.json"))
 }

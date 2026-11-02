@@ -206,18 +206,7 @@ struct MotionCheck {
                     "Token rate changed the playback cadence of \(mode)")
             }
         }
-        var slowCat = settled(.walk)
-        var fastCat = slowCat
-        slowCat.setSpeed(3)
-        fastCat.setSpeed(1000)
-        for _ in 0..<600 {
-            slowCat.advance(by: dt)
-            fastCat.advance(by: dt)
-            precondition(slowCat.clock.phase == fastCat.clock.phase,
-                "Cat cadence accelerated across tiers")
-        }
-        precondition(slowCat.mode == .walk && fastCat.mode == .jetpack)
-        print("PASS: all 9 actions keep identical cadence at different token rates; cat 3/1000 tok/s stays synchronized")
+        print("PASS: all 9 Makima actions keep identical cadence at different token rates")
     }
 
     static func exportTrace() throws {
@@ -242,7 +231,7 @@ struct MotionCheck {
                 var row: [String: Any] = ["time":Double(tick)*dt,"rawSpeed":director.rawSpeed,
                     "filteredSpeed":director.filteredSpeed,"mode":director.mode.rawValue,
                     "phase":director.clock.phase(cycleDuration:director.mode.cycleDuration),
-                    "catPhase":director.clock.phase,"title":director.title]
+                    "catPhase":director.cat.phase,"title":director.title]
                 if let transition = director.transition {
                     row["transition"] = ["from":transition.from.rawValue,"to":transition.to.rawValue,
                         "progress":transition.progress,"sourcePhase":transition.sourcePhase]

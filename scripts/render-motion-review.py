@@ -64,14 +64,14 @@ def encode(images,path,count,repeat=True):
     return {'frames':check.n_frames,'durationMS':total,'bytes':path.stat().st_size}
 
 
-order=['cat-idle','cat']+[f'{i:02d}-{name}' for i,name in enumerate(
-    ['idle','walk','brisk','run','rollers','board','bicycle','motorcycle','roadster','jetpack'])]
+order=[key for key in ['cat-idle','cat']+[f'{i:02d}-{name}' for i,name in enumerate(
+    ['idle','walk','brisk','run','rollers','board','bicycle','motorcycle','roadster','jetpack'])] if key in scenes]
 
 
 def overview(index):
     im=Image.new('RGB',(780,838),bg);d=ImageDraw.Draw(im)
     d.text((18,12),'玛奇玛 · 原画动作恢复',font=large,fill=ink)
-    d.text((18,47),'0.6.2  ·  完整黑白原画姿势  ·  黑猫保持原样  ·  tok/s 不倍速',font=small,fill=muted)
+    d.text((18,47),'完整黑白原画姿势 · 玛奇玛保持固定节奏；黑猫使用独立预览',font=small,fill=muted)
     for cell,key in enumerate(order):
         x=14+cell%3*256;y=77+cell//3*180;scene=scenes[key]
         d.rounded_rectangle((x,y,x+242,y+167),radius=12,fill='white')

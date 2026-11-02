@@ -28,6 +28,12 @@ final class MotionPreviewController: NSWindowController {
     private let enlarged = PixelImageView()
     private let stateLabel = NSTextField(labelWithString: "待机")
     private let speedLabel = NSTextField(labelWithString: "0.0 tok/s")
+    private let subtitle = NSTextField(labelWithString: "")
+    private let hint = NSTextField(labelWithString: "")
+    private let catButtons = NSStackView()
+    private let makimaButtons = NSStackView()
+    private let playButton = NSButton(title: "播放平滑加减速", target: nil, action: nil)
+    private let jumpButton = NSButton(title: "演示突然跳速", target: nil, action: nil)
     private let slider = NSSlider(value: 0, minValue: 0, maxValue: 220, target: nil, action: nil)
     private var timer: Timer?
     private var lastTime = ProcessInfo.processInfo.systemUptime
@@ -35,9 +41,11 @@ final class MotionPreviewController: NSWindowController {
     private enum Demo { case all, jitter, jumps }
     private var demo: Demo = .all
     private let speeds: [Double] = [0, 3, 12, 24, 36, 50, 67.6, 91, 125, 185]
+    private let catSpeeds: [Double] = [0, 8, 45, 140]
 
-    init() {
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 570),
+    init(style: PetStyle? = nil) {
+        self.style = style ?? UserDefaults.standard.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 640),
             styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "EmberCat · 动作预览"
         window.isReleasedWhenClosed = false
@@ -54,7 +62,7 @@ final class MotionPreviewController: NSWindowController {
         window?.makeKeyAndOrderFront(nil)
         lastTime = ProcessInfo.processInfo.systemUptime
         if timer == nil {
-            let timer = Timer(timeInterval: 1.0/30, repeats: true) { [weak self] _ in
+            let timer = Timer(timeInterval: 1.0/60, repeats: true) { [weak self] _ in
                 MainActor.assumeIsolated { self?.tick() }
             }
             RunLoop.main.add(timer, forMode: .common)
@@ -64,13 +72,12 @@ final class MotionPreviewController: NSWindowController {
 
     private func buildContent() {
         guard let content = window?.contentView else { return }
-        let title = NSTextField(labelWithString: "速度突然变了，也能自然换个动作。")
+        let title = NSTextField(labelWithString: "动作与速度")
         title.font = .systemFont(ofSize: 24, weight: .semibold)
-        let subtitle = NSTextField(labelWithString: "速度决定出行方式，每个动作保持固定节奏。预览使用模拟速度。")
         subtitle.textColor = .secondaryLabelColor
         let styles = NSSegmentedControl(labels: ["胖黑猫", "玛奇玛"], trackingMode: .selectOne,
             target: self, action: #selector(changeStyle(_:)))
-        styles.selectedSegment = 1
+        styles.selectedSegment = style == .cat ? 0 : 1
         stateLabel.font = .systemFont(ofSize: 18, weight: .medium)
         speedLabel.font = .monospacedDigitSystemFont(ofSize: 18, weight: .medium)
         actual.imageScaling = .scaleNone
@@ -79,12 +86,12 @@ final class MotionPreviewController: NSWindowController {
         actual.widthAnchor.constraint(equalToConstant: 72).isActive = true
         enlarged.imageScaling = .scaleProportionallyUpOrDown
         enlarged.translatesAutoresizingMaskIntoConstraints = false
-        enlarged.widthAnchor.constraint(equalToConstant: 288).isActive = true
-        enlarged.heightAnchor.constraint(equalToConstant: 160).isActive = true
+        enlarged.widthAnchor.constraint(equalToConstant: 252).isActive = true
+        enlarged.heightAnchor.constraint(equalToConstant: 140).isActive = true
         let actualBox = NSStackView(views: [actual, NSTextField(labelWithString: "菜单栏实际尺寸")])
         let enlargedBox = NSStackView(views: [enlarged, NSTextField(labelWithString: "动作放大查看")])
         for box in [actualBox, enlargedBox] { box.orientation = .vertical; box.alignment = .centerX }
-        actual.heightAnchor.constraint(equalToConstant: 160).isActive = true
+        actual.heightAnchor.constraint(equalToConstant: 140).isActive = true
         let images = NSStackView(views: [actualBox, enlargedBox])
         images.orientation = .horizontal
         images.alignment = .centerY
@@ -93,7 +100,15 @@ final class MotionPreviewController: NSWindowController {
         slider.action = #selector(changeSpeed(_:))
         slider.isContinuous = true
         slider.widthAnchor.constraint(equalToConstant: 700).isActive = true
-        var rows: [NSStackView] = []
+        catButtons.spacing = 12
+        for gait in CatGait.allCases {
+            let button = NSButton(title: gait.title, target: self, action: #selector(selectMode(_:)))
+            button.tag = gait.rank
+            button.widthAnchor.constraint(equalToConstant: 140).isActive = true
+            catButtons.addArrangedSubview(button)
+        }
+        makimaButtons.orientation = .vertical
+        makimaButtons.spacing = 10
         for start in stride(from: 0, to: SpeedTier.allCases.count, by: 5) {
             let buttons = SpeedTier.allCases[start..<min(start+5, SpeedTier.allCases.count)].map { mode in
                 let button = NSButton(title: mode.compactTitle, target: self, action: #selector(selectMode(_:)))
@@ -103,33 +118,51 @@ final class MotionPreviewController: NSWindowController {
             }
             let row = NSStackView(views: buttons)
             row.spacing = 10
-            rows.append(row)
+            makimaButtons.addArrangedSubview(row)
         }
-        let play = NSButton(title: "播放全套升降档", target: self, action: #selector(playAll))
+        playButton.target = self
+        playButton.action = #selector(playAll)
         let shake = NSButton(title: "演示边界防抖", target: self, action: #selector(playJitter))
-        let jump = NSButton(title: "演示 3 ↔ 70 跳速", target: self, action: #selector(playJumps))
+        jumpButton.target = self
+        jumpButton.action = #selector(playJumps)
         let stop = NSButton(title: "停止演示", target: self, action: #selector(stopDemo))
-        let actions = NSStackView(views: [play, jump, shake, stop])
+        let actions = NSStackView(views: [playButton, jumpButton, shake, stop])
         actions.spacing = 16
-        let hint = NSTextField(labelWithString: "升降档有防振区间、持续确认与最短停留；已开始的过渡会完整播放。")
         hint.font = .systemFont(ofSize: 12)
         hint.textColor = .secondaryLabelColor
         let views: [NSView] = [title, subtitle, styles, images, stateLabel,
-            speedLabel, slider] + rows + [actions, hint]
+            speedLabel, slider, catButtons, makimaButtons, actions, hint]
         let stack = NSStackView(views: views)
         stack.orientation = .vertical
         stack.alignment = .centerX
-        stack.spacing = 12
+        stack.spacing = 10
+        stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
         content.addSubview(stack)
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             stack.topAnchor.constraint(equalTo: content.topAnchor, constant: 22)])
+        updateStyleControls()
         render()
     }
 
     @objc private func changeStyle(_ sender: NSSegmentedControl) {
         style = sender.selectedSegment == 0 ? .cat : .makima
+        demoStart = nil
+        updateStyleControls()
         render()
+    }
+
+    private func updateStyleControls() {
+        catButtons.isHidden = style != .cat
+        makimaButtons.isHidden = style != .makima
+        subtitle.stringValue = style == .cat
+            ? "站立、行走、跑动、蜷成球滚动；随 tok/s 平滑加减速。预览使用模拟速度。"
+            : "速度决定出行方式，每个动作保持固定节奏。预览使用模拟速度。"
+        hint.stringValue = style == .cat
+            ? "蜷起后整圈翻滚；减速时转正、展开落地。菜单栏继续使用真实速度。"
+            : "升降档有防振区间、持续确认与最短停留；已开始的过渡会完整播放。"
+        playButton.title = style == .cat ? "播放平滑加减速" : "播放全套升降档"
+        jumpButton.title = style == .cat ? "演示 3 → 140 → 0" : "演示 3 ↔ 70 跳速"
     }
 
     @objc private func changeSpeed(_ sender: NSSlider) {
@@ -139,7 +172,7 @@ final class MotionPreviewController: NSWindowController {
 
     @objc private func selectMode(_ sender: NSButton) {
         demoStart = nil
-        slider.doubleValue = speeds[sender.tag]
+        slider.doubleValue = (style == .cat ? catSpeeds : speeds)[sender.tag]
         director.setSpeed(slider.doubleValue)
     }
 
@@ -160,14 +193,27 @@ final class MotionPreviewController: NSWindowController {
             switch demo {
             case .jitter:
                 let t = elapsed.truncatingRemainder(dividingBy: 48)
-                slider.doubleValue = t < 8 ? 24 : t < 22 ? 30 + 2*sin(t*12)
-                    : t < 30 ? 38 : t < 42 ? 30 + 2*sin(t*12) : 24
+                if style == .cat {
+                    slider.doubleValue = t < 8 ? 45 : t < 22 ? 80 + 4*sin(t*12)
+                        : t < 30 ? 140 : t < 42 ? 80 + 4*sin(t*12) : 45
+                } else {
+                    slider.doubleValue = t < 8 ? 24 : t < 22 ? 30 + 2*sin(t*12)
+                        : t < 30 ? 38 : t < 42 ? 30 + 2*sin(t*12) : 24
+                }
             case .all:
-                let index = Int(elapsed/6).quotientAndRemainder(dividingBy: 18).remainder
-                slider.doubleValue = speeds[index <= 9 ? index : 18-index]
+                if style == .cat {
+                    let t = elapsed.truncatingRemainder(dividingBy: 36)
+                    slider.doubleValue = t < 2 ? 0 : t < 16 ? (t-2)/14*160
+                        : t < 22 ? 160 : t < 30 ? (30-t)/8*160 : 0
+                } else {
+                    let index = Int(elapsed/6).quotientAndRemainder(dividingBy: 18).remainder
+                    slider.doubleValue = speeds[index <= 9 ? index : 18-index]
+                }
             case .jumps:
                 let t = elapsed.truncatingRemainder(dividingBy: 30)
-                slider.doubleValue = t < 4 ? 3 : t < 9 ? 70 : t < 15 ? 3 : t < 21 ? 185 : 0
+                slider.doubleValue = style == .cat
+                    ? (t < 5 ? 3 : t < 17 ? 140 : 0)
+                    : (t < 4 ? 3 : t < 9 ? 70 : t < 15 ? 3 : t < 21 ? 185 : 0)
             }
             director.setSpeed(slider.doubleValue)
         }
@@ -183,8 +229,9 @@ final class MotionPreviewController: NSWindowController {
         actual.contentTintColor = .labelColor
         enlarged.contentTintColor = .labelColor
         speedLabel.stringValue = String(format: "%.1f tok/s", director.rawSpeed)
-        let state = style == .cat ? (director.mode == .idle && director.transition == nil ? "待机" : "跑动") : director.title
-        stateLabel.stringValue = "\(style.displayName) · \(state)" + (director.pending == nil ? "" : " · 确认中")
+        let state = style == .cat ? director.cat.title : director.title
+        stateLabel.stringValue = "\(style.displayName) · \(state)"
+            + (style == .makima && director.pending != nil ? " · 确认中" : "")
     }
 }
 

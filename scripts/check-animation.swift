@@ -22,7 +22,7 @@ struct Check {
         near(clock.phase, 1.0/6.0)
         clock.advance(by: 0.4)
         near(clock.phase, 1.0/3.0)
-        print("PASS: fixed 2.4 s cat cycle advances solely by elapsed wall time")
+        print("PASS: fixed 2.4 s clock advances solely by elapsed wall time")
     }
 
     private static func idlePreservesPhase() {

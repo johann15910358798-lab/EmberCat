@@ -11,11 +11,56 @@ final class SpriteLibrary {
 
     private init() {}
 
-    func frames(for style: PetStyle, mode: SpeedTier) -> [NSImage] {
-        let relative = style == .cat
-            ? "Cat/\(mode == .idle ? "idle" : "run")"
-            : "Makima/Modes/\(mode.rawValue)"
-        return load(relative)
+    func frames(for mode: SpeedTier) -> [NSImage] {
+        load("Makima/Modes/\(mode.rawValue)")
+    }
+
+    func catFrames(for gait: CatGait) -> [NSImage] {
+        load("Cat/\(gait.rawValue)")
+    }
+
+    func catCurlFrames() -> [NSImage] { load("Cat/curl") }
+
+    func catMenuBarFrames(for gait: CatGait) -> [NSImage] {
+        let key = "Cat/\(gait.rawValue)"
+        if let found = menuBarCache[key] { return found }
+        let trimmed = catFrames(for: gait).map { crop($0, to: catMenuBarBounds(for: gait)) }
+        menuBarCache[key] = trimmed
+        return trimmed
+    }
+
+    func catMenuBarCurlFrames() -> [NSImage] {
+        let key = "Cat/curl"
+        if let found = menuBarCache[key] { return found }
+        let frames = catCurlFrames()
+        guard frames.count > 1 else { return frames }
+        let source = catMenuBarBounds(for: .run)
+        let target = catMenuBarBounds(for: .roll)
+        var bounds = frames.enumerated().map { index, frame in
+            let p = Double(index) / Double(frames.count - 1)
+            let eased = p * p * (3 - 2 * p)
+            let left = floor(source.minX + (target.minX - source.minX) * eased)
+            let right = ceil(source.maxX + (target.maxX - source.maxX) * eased)
+            return NSRect(x: left, y: 0, width: right - left, height: 20)
+                .union(horizontalBounds(of: [frame]))
+        }
+        // Shrink the occupied width with the actual curl, never oscillating or
+        // clipping a paw. Steady loops keep a constant width at both endpoints.
+        for index in stride(from: bounds.count - 2, through: 0, by: -1) {
+            bounds[index] = bounds[index].union(bounds[index + 1])
+        }
+        let trimmed = zip(frames, bounds).map { crop($0.0, to: $0.1) }
+        menuBarCache[key] = trimmed
+        return trimmed
+    }
+
+    private func catMenuBarBounds(for gait: CatGait) -> NSRect {
+        let key = gait == .roll ? "Cat/roll-bounds" : "Cat/locomotion-bounds"
+        if let found = menuBarBoundsCache[key] { return found }
+        let gaits: [CatGait] = gait == .roll ? [.roll] : [.idle, .walk, .run]
+        let bounds = horizontalBounds(of: gaits.flatMap { catFrames(for: $0) })
+        menuBarBoundsCache[key] = bounds
+        return bounds
     }
 
     func transitionFrames(from: SpeedTier, to: SpeedTier) -> [NSImage] {
@@ -27,13 +72,14 @@ final class SpriteLibrary {
     }
 
     func image(for style: PetStyle, director: MotionDirector) -> NSImage? {
-        guard style == .makima, let transition = director.transition else {
-            return cycleFrame(style: style, mode: director.mode,
-                phase: director.clock.phase(cycleDuration: style.cycleDuration(for: director.mode)))
+        if style == .cat { return catImage(director.cat) }
+        guard let transition = director.transition else {
+            return cycleFrame(mode: director.mode,
+                phase: director.clock.phase(cycleDuration: director.mode.cycleDuration))
         }
-        guard let from = cycleFrame(style: style, mode: transition.from, phase: transition.sourcePhase),
-              let to = cycleFrame(style: style, mode: transition.to,
-                phase: director.clock.phase(cycleDuration: style.cycleDuration(for: transition.to))) else { return nil }
+        guard let from = cycleFrame(mode: transition.from, phase: transition.sourcePhase),
+              let to = cycleFrame(mode: transition.to,
+                phase: director.clock.phase(cycleDuration: transition.to.cycleDuration)) else { return nil }
         let keys = [from] + transitionFrames(from: transition.from, to: transition.to) + [to]
         let position = min(Double(keys.count - 1), transition.progress * Double(keys.count - 1))
         let index = min(keys.count - 2, Int(position))
@@ -42,22 +88,36 @@ final class SpriteLibrary {
         return blend(keys[index], keys[index + 1], amount: eased)
     }
 
-    func menuBarFrames(for style: PetStyle, mode: SpeedTier) -> [NSImage] {
-        let key = menuBarKey(for: style, mode: mode)
+    func menuBarFrames(for mode: SpeedTier) -> [NSImage] {
+        let key = "Makima/\(mode.rawValue)"
         if let found = menuBarCache[key] { return found }
-        let frames = frames(for: style, mode: mode)
-        let bounds = menuBarBounds(for: style, mode: mode)
+        let frames = frames(for: mode)
+        let bounds = menuBarBounds(for: mode)
         let trimmed = frames.map { crop($0, to: bounds) }
         menuBarCache[key] = trimmed
         return trimmed
     }
 
     func menuBarImage(for style: PetStyle, director: MotionDirector) -> NSImage? {
-        guard style == .makima, let transition = director.transition else {
-            let frames = menuBarFrames(for: style, mode: director.mode)
+        if style == .cat {
+            let motion = director.cat
+            if let active = motion.transition {
+                if active.kind != .blend {
+                    let frames = catMenuBarCurlFrames()
+                    return curlFrame(frames, transition: active)
+                }
+                guard let image = catImage(motion) else { return nil }
+                return crop(image, to: catMenuBarBounds(for: .run))
+            }
+            let frames = catMenuBarFrames(for: motion.gait)
+            guard !frames.isEmpty else { return nil }
+            return frames[AnimationClock.frameIndex(phase: motion.phase, frameCount: frames.count)]
+        }
+        guard let transition = director.transition else {
+            let frames = menuBarFrames(for: director.mode)
             guard !frames.isEmpty else { return nil }
             let index = director.clock.frameIndex(frameCount: frames.count,
-                cycleDuration: style.cycleDuration(for: director.mode))
+                cycleDuration: director.mode.cycleDuration)
             return frames[index]
         }
         guard let image = image(for: style, director: director) else { return nil }
@@ -71,21 +131,17 @@ final class SpriteLibrary {
             // One envelope for the entire transition, including both endpoint cycles.
             // Width never changes between frames or clips a vehicle entering the scene.
             bounds = horizontalBounds(of: transitionFrames(from: lower, to: upper))
-                .union(menuBarBounds(for: style, mode: lower))
-                .union(menuBarBounds(for: style, mode: upper))
+                .union(menuBarBounds(for: lower))
+                .union(menuBarBounds(for: upper))
             menuBarBoundsCache[key] = bounds
         }
         return crop(image, to: bounds)
     }
 
-    private func menuBarKey(for style: PetStyle, mode: SpeedTier) -> String {
-        "\(style.rawValue)/\(style == .cat ? (mode == .idle ? "idle" : "run") : mode.rawValue)"
-    }
-
-    private func menuBarBounds(for style: PetStyle, mode: SpeedTier) -> NSRect {
-        let key = menuBarKey(for: style, mode: mode)
+    private func menuBarBounds(for mode: SpeedTier) -> NSRect {
+        let key = "Makima/\(mode.rawValue)"
         if let found = menuBarBoundsCache[key] { return found }
-        let bounds = horizontalBounds(of: frames(for: style, mode: mode))
+        let bounds = horizontalBounds(of: frames(for: mode))
         menuBarBoundsCache[key] = bounds
         return bounds
     }
@@ -124,10 +180,31 @@ final class SpriteLibrary {
         return result
     }
 
-    private func cycleFrame(style: PetStyle, mode: SpeedTier, phase: Double) -> NSImage? {
-        let frames = frames(for: style, mode: mode)
+    private func cycleFrame(mode: SpeedTier, phase: Double) -> NSImage? {
+        let frames = frames(for: mode)
         guard !frames.isEmpty else { return nil }
         return frames[AnimationClock.frameIndex(phase: phase, frameCount: frames.count)]
+    }
+
+    private func catCycleFrame(_ gait: CatGait, phase: Double) -> NSImage? {
+        let frames = catFrames(for: gait)
+        guard !frames.isEmpty else { return nil }
+        return frames[AnimationClock.frameIndex(phase: phase, frameCount: frames.count)]
+    }
+
+    private func catImage(_ motion: CatMotion) -> NSImage? {
+        guard let transition = motion.transition else { return catCycleFrame(motion.gait, phase: motion.phase) }
+        if transition.kind != .blend { return curlFrame(catCurlFrames(), transition: transition) }
+        guard let from = catCycleFrame(transition.from, phase: motion.phase),
+              let to = catCycleFrame(transition.to, phase: motion.phase) else { return nil }
+        let p = transition.progress
+        return blend(from, to, amount: p * p * (3 - 2 * p))
+    }
+
+    private func curlFrame(_ frames: [NSImage], transition: CatMotion.Transition) -> NSImage? {
+        guard !frames.isEmpty else { return nil }
+        let p = transition.kind == .curl ? transition.progress : 1 - transition.progress
+        return frames[min(frames.count - 1, Int((p * Double(frames.count - 1)).rounded()))]
     }
 
     private func load(_ relative: String) -> [NSImage] {

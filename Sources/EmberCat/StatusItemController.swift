@@ -23,7 +23,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     private struct FrameKey: Equatable {
         let style: PetStyle
-        let mode: SpeedTier
+        let mode: String
         let transition: String
         let index: Int
     }
@@ -161,7 +161,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private var motionTitle: String {
-        style == .cat ? (director.mode == .idle && director.transition == nil ? "待机" : "跑动") : director.title
+        style == .cat ? director.cat.title : director.title
     }
 
     private func updateMenuTitle() {
@@ -169,7 +169,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func updateTimer() {
-        guard director.needsTicks else {
+        guard style == .cat ? director.cat.needsTicks : director.needsTicks else {
             timer?.invalidate()
             timer = nil
             timerInterval = nil
@@ -177,7 +177,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         }
 
         // Also advances confirmation timers and hand-drawn transition frames.
-        let interval = 1.0 / 30.0
+        let interval = style == .cat ? 1.0 / 60.0 : 1.0 / 30.0
         guard timer == nil || timerInterval != interval else { return }
         timer?.invalidate()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in
@@ -224,7 +224,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func showPreview() {
-        if preview == nil { preview = MotionPreviewController() }
+        if preview == nil { preview = MotionPreviewController(style: style) }
         preview?.showWindow(nil)
     }
 
@@ -247,11 +247,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     private func applyFrame() {
-        let count = SpriteLibrary.shared.frames(for: style, mode: director.mode).count
+        let count = style == .cat ? director.cat.gait.frameCount : director.mode.frameCount
         let active = style == .makima ? director.transition : nil
         let transitionKey = active.map { "\($0.from.rawValue)_\($0.to.rawValue)_\(Int($0.progress * 30))" } ?? ""
-        let index = director.clock.frameIndex(frameCount: count, cycleDuration: style.cycleDuration(for: director.mode))
-        let key = FrameKey(style: style, mode: director.mode, transition: transitionKey, index: index)
+        let index = director.clock.frameIndex(frameCount: count, cycleDuration: director.mode.cycleDuration)
+        let key = style == .cat
+            ? FrameKey(style: style, mode: director.cat.frameKey, transition: "", index: 0)
+            : FrameKey(style: style, mode: director.mode.rawValue, transition: transitionKey, index: index)
         guard key != displayedFrame else { return }
         displayedFrame = key
         guard let image = SpriteLibrary.shared.menuBarImage(for: style, director: director) else {

@@ -3,13 +3,14 @@
 
 Offline and deterministic; requires Pillow. API credentials are never read.
 """
+import argparse
 import hashlib
 import json
 from itertools import combinations
 from pathlib import Path
 
 from PIL import Image, ImageFilter
-from motion_rigs import cat_rig
+from motion_rigs import cat_animations
 
 ROOT = Path(__file__).resolve().parents[1]
 ART = ROOT / 'Artwork'
@@ -166,16 +167,12 @@ def export_transition(masks,folder,source,target):
     return {'frames':len(masks),'registration':'upper hair-cap interpolation; excludes braid','keys':rows}
 
 
-def export_registered(masks, folder, metadata, extra=None):
-    """Every part uses one scale, origin and baseline for the entire loop."""
-    boxes = [bounds(mask) for mask in masks]
-    if extra is not None:
-        boxes.append(bounds(extra))
+def export_cat_family(sheets, metadata):
+    """Stand, gaits and curl share one scale, origin and ground line."""
+    boxes = [bounds(mask) for masks in sheets.values() for mask in masks]
     envelope = (min(b[0] for b in boxes), min(b[1] for b in boxes),
         max(b[2] for b in boxes), max(b[3] for b in boxes))
     scale = min(31/(envelope[2]-envelope[0]),17.6/(envelope[3]-envelope[1]))
-    if 'headHeight' in metadata:
-        scale = min(scale,7.2/metadata['headHeight'])
     center = (envelope[0]+envelope[2])/2
     transform = (1/(scale*12),0,center-18/scale,
         0,1/(scale*12),envelope[3]-19/scale)
@@ -185,35 +182,41 @@ def export_registered(masks, folder, metadata, extra=None):
             transform,Image.Resampling.BICUBIC)
         for density in (1,2):
             alpha=large.resize((SIZE[0]*density,SIZE[1]*density),Image.Resampling.LANCZOS)
+            # Discard barely visible resampling rings outside the silhouette,
+            # otherwise alpha=1..4 speckles keep the full transparent width.
+            alpha=alpha.point(lambda value: 0 if value<=4 else value)
             image=Image.new('RGBA',alpha.size)
             image.putalpha(alpha)
             name=f'frame-{index+1:02d}{"@2x" if density==2 else ""}.png'
             image.save(target/name,optimize=True)
-    folder.mkdir(parents=True,exist_ok=True)
-    expected={f'frame-{i+1:02d}{suffix}.png' for i in range(len(masks)) for suffix in ('','@2x')}
-    for old in folder.glob('*.png'):
-        if old.name not in expected: old.unlink()
-    for i,mask in enumerate(masks): write(mask,i,folder)
-    if extra is not None:
-        write(extra,0,folder.parent/'idle')
-    # Registration stays fixed, while the character may transfer weight inside
-    # that canvas. Freezing head pixels would incorrectly reward a rigid torso.
-    head=tuple(metadata['headBox'])
-    logical_head = [18+(head[0]-center)*scale,19+(head[1]-envelope[3])*scale,
-        18+(head[2]-center)*scale,19+(head[3]-envelope[3])*scale]
-    hx,hy,hw=head_landmark(masks[0])
-    return {'frames':len(masks),'scale':scale,'bounds':boxes[:len(masks)],
-        'fixedEnvelope':envelope,'registration':'one scale and origin for the entire loop',
-        'logicalHeadBox':logical_head,'rig':metadata,
-        'headCenter':[18+(hx-center)*scale,19+(hy-envelope[3])*scale],'headWidth':hw*scale}
+    report={}
+    for name,masks in sheets.items():
+        folder=OUT/'Cat'/name
+        folder.mkdir(parents=True,exist_ok=True)
+        expected={f'frame-{i+1:02d}{suffix}.png' for i in range(len(masks)) for suffix in ('','@2x')}
+        for old in folder.glob('*.png'):
+            if old.name not in expected: old.unlink()
+        for i,mask in enumerate(masks): write(mask,i,folder)
+        head=metadata[name]['headBox']
+        logical_head=[18+(head[0]-center)*scale,19+(head[1]-envelope[3])*scale,
+            18+(head[2]-center)*scale,19+(head[3]-envelope[3])*scale]
+        report[f'Cat/{name}']={'frames':len(masks),'scale':scale,
+            'bounds':[bounds(mask) for mask in masks],
+            'fixedEnvelope':envelope,'registration':'one scale and origin for all cat actions',
+            'logicalHeadBox':logical_head,'rig':metadata[name]}
+    return report
 
 
 def main():
-    report = {'canvas': SIZE, 'scales': [1, 2], 'provenance': 'Original generated cat; user-requested Makima fan art; no RunCat image inputs or runtime assets', 'sheets': {}}
-    cat, idle, metadata = cat_rig(ART)
-    report['sheets']['Cat/run'] = export_registered(cat,OUT/'Cat/run',metadata,extra=idle)
-    report['sheets']['Cat/idle'] = {'frames':1,'sharedRegistration':'Cat/run'}
-    for rank, name in enumerate(MODES):
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--cat-only',action='store_true',help='Preserve all Makima resources byte for byte')
+    args=parser.parse_args()
+    report = json.loads((ART/'derivation.json').read_text()) if args.cat_only else {
+        'canvas': SIZE, 'scales': [1, 2], 'provenance': 'Original generated cat; user-requested Makima fan art; no RunCat image inputs or runtime assets', 'sheets': {}}
+    cat,metadata=cat_animations(ART)
+    report['sheets']={name:sheet for name,sheet in report['sheets'].items() if not name.startswith('Cat/')}
+    report['sheets'].update(export_cat_family(cat,metadata))
+    for rank, name in ([] if args.cat_only else enumerate(MODES)):
         key = f'{rank:02d}-{name}'
         source = ART/'Makima/Modes'/f'{key}.png'
         if name == 'idle':
@@ -223,7 +226,7 @@ def main():
             report['sheets'][f'Makima/Modes/{key}']=export(masks,OUT/'Makima/Modes'/key,name)
             report['sheets'][f'Makima/Modes/{key}']['master']=str(source.relative_to(ART))
             report['sheets'][f'Makima/Modes/{key}']['originalKeyframes']=8
-    for lower, upper in combinations(range(len(MODES)), 2):
+    for lower, upper in ([] if args.cat_only else combinations(range(len(MODES)), 2)):
         key = f'{lower:02d}-{MODES[lower]}_{upper:02d}-{MODES[upper]}'
         source = ART/'Makima/Transitions'/f'{key}.png'
         lower_sheet=report['sheets'][f'Makima/Modes/{lower:02d}-{MODES[lower]}']
@@ -231,7 +234,7 @@ def main():
         report['sheets'][f'Makima/Transitions/{key}'] = export_transition(split(source,2,2,adaptive=True),
             OUT/'Makima/Transitions'/key,lower_sheet,upper_sheet)
     # Remove flat resources belonging to the rejected 0.4 drafts, including upstream cat PNGs.
-    for style in ('Cat','Makima'):
+    for style in (('Cat',) if args.cat_only else ('Cat','Makima')):
         for old in (OUT/style).iterdir():
             if old.is_file() and old.suffix in ('.png','.svg'):
                 old.unlink()

@@ -1,14 +1,13 @@
 import Foundation
 
-/// Playback time advances at wall-clock speed. Token rate never changes cadence.
+/// Fixed wall-clock playback for Makima's original hand-drawn action loops.
 struct AnimationClock {
-    static let catCycleDuration = 2.4
-    static let catFrameCount = 72
+    static let defaultCycleDuration = 2.4
     private(set) var elapsed: TimeInterval = 0
     private(set) var isPlaying = false
 
     var isIdle: Bool { !isPlaying }
-    var phase: Double { phase(cycleDuration: Self.catCycleDuration) }
+    var phase: Double { phase(cycleDuration: Self.defaultCycleDuration) }
 
     func phase(cycleDuration: TimeInterval) -> Double {
         guard cycleDuration.isFinite, cycleDuration > 0 else { return 0 }
@@ -24,7 +23,7 @@ struct AnimationClock {
         self.elapsed += elapsed
     }
 
-    func frameIndex(frameCount: Int, cycleDuration: TimeInterval = Self.catCycleDuration) -> Int {
+    func frameIndex(frameCount: Int, cycleDuration: TimeInterval = Self.defaultCycleDuration) -> Int {
         Self.frameIndex(phase: phase(cycleDuration: cycleDuration), frameCount: frameCount)
     }
 
