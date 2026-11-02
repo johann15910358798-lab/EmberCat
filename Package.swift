@@ -36,7 +36,7 @@ let package = Package(
                 "NotchFlameSettings.swift",
                 "NotchFlamePreviewController.swift",
             ],
-            resources: [.copy("Resources/MenuBarPets")]
+            resources: [.copy("Resources/MenuBarPets"), .copy("Resources/SourceIcons")]
         ),
         .testTarget(name: "EmberCatTests", dependencies: ["EmberCat"], path: "Tests/EmberCatTests"),
     ]

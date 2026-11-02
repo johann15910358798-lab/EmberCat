@@ -232,13 +232,7 @@ final class SpriteLibrary {
     }
 
     private func resourceFolder(_ relative: String) -> URL? {
-        let subpath = "MenuBarPets/\(relative)"
-        if let folder = Bundle.main.resourceURL?.appendingPathComponent(subpath),
-           FileManager.default.fileExists(atPath: folder.path) { return folder }
-        // The standalone app has no SwiftPM resource bundle: check its resources first.
-        guard let folder = Bundle.module.resourceURL?.appendingPathComponent(subpath),
-              FileManager.default.fileExists(atPath: folder.path) else { return nil }
-        return folder
+        AppResources.directory("MenuBarPets/\(relative)")
     }
 
     private func blend(_ from: NSImage, _ to: NSImage, amount: Double) -> NSImage {

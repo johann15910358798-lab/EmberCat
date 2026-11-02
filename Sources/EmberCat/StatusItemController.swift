@@ -1,18 +1,15 @@
 import AppKit
 import Combine
+import SwiftUI
 
 @MainActor
-final class StatusItemController: NSObject, NSMenuDelegate {
+final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let viewModel: SpeedMonitorModel
     private let defaults: UserDefaults
-    private let menu = NSMenu()
-    private let speedMenuItem = NSMenuItem(title: "0.0 tok/s · 待机", action: nil, keyEquivalent: "")
-    private let sourceMenuItem = NSMenuItem(title: "已发现来源 · 0", action: nil, keyEquivalent: "")
-    private var styleMenuItems: [PetStyle: NSMenuItem] = [:]
-    private var displayMenuItems: [NSMenuItem] = []
-    private var showsTokenRate: Bool
-    private var style: PetStyle
+    private let panelState: StatusPanelState
+    private var showsTokenRate: Bool { panelState.showsTokenRate }
+    private var style: PetStyle { panelState.style }
     private var director = MotionDirector()
     private var timer: Timer?
     private var timerInterval: TimeInterval?
@@ -20,6 +17,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private var displayedFrame: FrameKey?
     private var bag: Set<AnyCancellable> = []
     private var preview: MotionPreviewController?
+    private var menuPopover: NSPopover?
 
     private struct FrameKey: Equatable {
         let style: PetStyle
@@ -31,13 +29,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     init(viewModel: SpeedMonitorModel, defaults: UserDefaults = .standard) {
         self.viewModel = viewModel
         self.defaults = defaults
-        self.style = defaults.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat
-        self.showsTokenRate = defaults.bool(forKey: "showsTokenRate")
+        self.panelState = StatusPanelState(
+            style: defaults.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat,
+            showsTokenRate: defaults.bool(forKey: "showsTokenRate"))
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
         configureStatusButton()
-        configureMenu()
         observeViewModel()
         applyFrame()
     }
@@ -47,7 +45,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         timer = nil
         timerInterval = nil
         bag.removeAll()
-        statusItem.menu = nil
+        menuPopover?.close()
+        menuPopover = nil
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
@@ -57,76 +56,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         button.imagePosition = .imageOnly
         button.imageScaling = .scaleProportionallyDown
         button.isBordered = false
+        (button.cell as? NSButtonCell)?.highlightsBy = []
         button.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
         button.cell?.wraps = false
         button.cell?.usesSingleLineMode = true
         button.setAccessibilityLabel("EmberCat")
         button.target = self
-        button.action = #selector(handleStatusClick(_:))
+        button.action = #selector(togglePanel(_:))
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         updateRateLabel()
     }
 
-    private func configureMenu() {
-        menu.autoenablesItems = false
-        menu.delegate = self
-
-        let titleItem = NSMenuItem(title: "EmberCat", action: nil, keyEquivalent: "")
-        titleItem.isEnabled = false
-        menu.addItem(titleItem)
-        speedMenuItem.isEnabled = false
-        menu.addItem(speedMenuItem)
-        sourceMenuItem.isEnabled = false
-        menu.addItem(sourceMenuItem)
-        menu.addItem(.separator())
-
-        let displayItem = NSMenuItem(title: "菜单栏显示", action: nil, keyEquivalent: "")
-        let displayMenu = NSMenu(title: "菜单栏显示")
-        displayMenu.autoenablesItems = false
-        for (title, showsRate) in [("人物 + 实时速度（tok/s）", true), ("仅人物（紧凑）", false)] {
-            let item = NSMenuItem(title: title, action: #selector(selectDisplayMode(_:)), keyEquivalent: "")
-            item.target = self
-            item.tag = showsRate ? 1 : 0
-            item.state = showsRate == showsTokenRate ? .on : .off
-            displayMenu.addItem(item)
-            displayMenuItems.append(item)
-        }
-        displayItem.submenu = displayMenu
-        menu.addItem(displayItem)
-
-        let stylesItem = NSMenuItem(title: "形象", action: nil, keyEquivalent: "")
-        let stylesMenu = NSMenu(title: "形象")
-        stylesMenu.autoenablesItems = false
-        for pet in PetStyle.allCases {
-            let item = NSMenuItem(title: pet.displayName, action: #selector(selectStyle(_:)), keyEquivalent: "")
-            item.target = self
-            item.representedObject = pet.rawValue
-            item.state = pet == style ? .on : .off
-            stylesMenu.addItem(item)
-            styleMenuItems[pet] = item
-        }
-        stylesItem.submenu = stylesMenu
-        menu.addItem(stylesItem)
-
-        let previewItem = NSMenuItem(title: "动作预览…", action: #selector(showPreview), keyEquivalent: "")
-        previewItem.target = self
-        menu.addItem(previewItem)
-
-        menu.addItem(.separator())
-
-        let quitItem = NSMenuItem(title: "退出 EmberCat", action: #selector(quit), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-    }
-
     private func observeViewModel() {
-        Publishers.CombineLatest(viewModel.$speed, viewModel.$sourceCount)
-            .sink { [weak self] speed, sourceCount in
+        viewModel.$snapshot
+            .sink { [weak self] snapshot in
                 guard let self else { return }
-                // Published values arrive before their stored properties change.
-                updateSpeed(speed)
-                updateMenuTitle()
-                sourceMenuItem.title = "已发现来源 · \(sourceCount)"
+                updateSpeed(max(0, snapshot.live.output))
                 updateToolTip()
             }
             .store(in: &bag)
@@ -164,10 +109,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         style == .cat ? director.cat.title : director.title
     }
 
-    private func updateMenuTitle() {
-        speedMenuItem.title = String(format: "%.1f tok/s · %@", director.rawSpeed, motionTitle)
-    }
-
     private func updateTimer() {
         guard style == .cat ? director.cat.needsTicks : director.needsTicks else {
             timer?.invalidate()
@@ -189,47 +130,82 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         timerInterval = interval
     }
 
-    @objc private func handleStatusClick(_ sender: Any?) {
-        guard statusItem.menu == nil else { return }
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
+    @objc private func togglePanel(_ sender: Any?) {
+        if menuPopover?.isShown == true {
+            menuPopover?.close()
+            return
+        }
+        showMenu()
     }
 
-    func menuDidClose(_ menu: NSMenu) {
-        statusItem.menu = nil
+    func showMenu() {
+        guard menuPopover?.isShown != true else { return }
+        guard let button = statusItem.button else { return }
+        if menuPopover == nil {
+            let popover = NSPopover()
+            popover.behavior = .transient
+            popover.delegate = self
+            let host = NSHostingController(rootView: StatusPanelView(
+                viewModel: viewModel, state: panelState,
+                onNavigate: { [weak self] in self?.navigate(to: $0) },
+                onSelectStyle: { [weak self] in self?.selectStyle($0) },
+                onSelectDisplay: { [weak self] in self?.selectDisplayMode($0) },
+                onPreview: { [weak self] in self?.showPreview() },
+                onClose: { [weak self] in self?.menuPopover?.close() },
+                onQuit: { NSApplication.shared.terminate(nil) }))
+            // One popover owns both pages. Its native size animation keeps the
+            // anchor and surface continuous while SwiftUI transitions the content.
+            host.sizingOptions = []
+            host.view.frame = NSRect(origin: .zero, size: StatusPanelState.Page.menu.size)
+            popover.contentViewController = host
+            menuPopover = popover
+        }
+        panelState.page = .menu
+        menuPopover?.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        menuPopover?.contentSize = StatusPanelState.Page.menu.size
+        button.highlight(false)
+        NSApp.activate()
+        menuPopover?.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        menuPopover?.contentViewController?.view.window?.makeKeyAndOrderFront(nil)
+    }
+
+    private func navigate(to page: StatusPanelState.Page) {
+        guard page != panelState.page else { return }
+        let reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        menuPopover?.animates = !reduceMotion
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+            panelState.page = page
+        }
+        menuPopover?.contentSize = page.size
+    }
+
+    func popoverDidClose(_ notification: Notification) {
+        panelState.page = .menu
         statusItem.button?.highlight(false)
         statusItem.button?.state = .off
     }
 
-    @objc private func selectDisplayMode(_ sender: NSMenuItem) {
-        let selected = sender.tag == 1
+    private func selectDisplayMode(_ selected: Bool) {
         guard selected != showsTokenRate else { return }
-        showsTokenRate = selected
+        panelState.showsTokenRate = selected
         defaults.set(selected, forKey: "showsTokenRate")
-        for item in displayMenuItems { item.state = (item.tag == 1) == selected ? .on : .off }
         updateRateLabel()
     }
 
-    @objc private func selectStyle(_ sender: NSMenuItem) {
-        guard let rawValue = sender.representedObject as? String,
-              let selected = PetStyle(rawValue: rawValue), selected != style else { return }
+    private func selectStyle(_ selected: PetStyle) {
+        guard selected != style else { return }
         advanceMotion()
-        style = selected
+        panelState.style = selected
         defaults.set(style.rawValue, forKey: "petStyle")
-        for (pet, item) in styleMenuItems { item.state = pet == style ? .on : .off }
         updateTimer()
-        updateMenuTitle()
         updateToolTip()
         applyFrame()
     }
 
     @objc private func showPreview() {
+        menuPopover?.close()
         if preview == nil { preview = MotionPreviewController(style: style) }
         preview?.showWindow(nil)
-    }
-
-    @objc private func quit() {
-        NSApplication.shared.terminate(nil)
     }
 
     private func advanceMotion() {
@@ -241,7 +217,6 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     private func tick() {
         advanceMotion()
         updateTimer()
-        updateMenuTitle()
         updateToolTip()
         applyFrame()
     }

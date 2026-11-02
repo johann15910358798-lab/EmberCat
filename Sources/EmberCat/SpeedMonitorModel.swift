@@ -4,6 +4,7 @@ import Foundation
 
 @MainActor
 final class SpeedMonitorModel: ObservableObject {
+    @Published private(set) var snapshot: SpeedSnapshot = .empty
     @Published private(set) var speed: Double = 0
     @Published private(set) var tier: SpeedTier = .idle
     @Published private(set) var peak: Double = 0
@@ -89,6 +90,8 @@ final class SpeedMonitorModel: ObservableObject {
             }
         }
 
+        // Publish the source breakdown and its total together, after applying this tick.
+        self.snapshot = snapshot
         onSnapshotChange?(snapshot)
     }
 

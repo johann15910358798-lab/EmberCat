@@ -1,3 +1,4 @@
+import AgentSpeedCore
 import AppKit
 
 /// Loads the same steady and transition resources as the running app.
@@ -11,6 +12,40 @@ func checkMenuBarResources() -> Bool {
     var menuBarFramesChecked = 0
     var menuBarWidths: [String: CGFloat] = [:]
     var failures: [String] = []
+    var sourceIconsChecked: [String] = []
+    var sourceIconFallbacksChecked = 0
+    var unreadableSourceIconFallbackChecked = false
+    let missingIcons = SourceIconLibrary(resourceDirectory: nil, usesInstalledApplications: false)
+    // Check bundled logos even when the corresponding desktop app is installed.
+    // This exercises the same resource lookup in SwiftPM and packaged releases.
+    for source in SourceKind.allCases {
+        guard let image = SourceIconLibrary.shared.bundledImage(for: source),
+              image.isValid, image.size.width > 0, image.size.height > 0 else {
+            failures.append("SourceIcons/\(source.rawValue): missing or unreadable logo")
+            continue
+        }
+        sourceIconsChecked.append(source.rawValue)
+        if !SourceIconLibrary.shared.image(for: source).isValid {
+            failures.append("SourceIcons/\(source.rawValue): invalid displayed logo")
+        }
+        if missingIcons.image(for: source).isValid {
+            sourceIconFallbacksChecked += 1
+        } else {
+            failures.append("SourceIcons/\(source.rawValue): missing-resource fallback failed")
+        }
+    }
+    let unreadableIcons = FileManager.default.temporaryDirectory.appendingPathComponent("embercat-icons-\(UUID().uuidString)")
+    do {
+        try FileManager.default.createDirectory(at: unreadableIcons, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: unreadableIcons) }
+        try Data("not an image".utf8).write(to: unreadableIcons.appendingPathComponent("claudeCode.png"))
+        let library = SourceIconLibrary(resourceDirectory: unreadableIcons, usesInstalledApplications: false)
+        unreadableSourceIconFallbackChecked = library.bundledImage(for: .claudeCode) == nil
+            && library.image(for: .claudeCode).isValid
+        if !unreadableSourceIconFallbackChecked { failures.append("SourceIcons: unreadable-logo fallback failed") }
+    } catch {
+        failures.append("SourceIcons: could not prepare unreadable-logo check: \(error.localizedDescription)")
+    }
     func validate(_ frames: [NSImage], expected: Int, label: String) {
         if frames.count != expected { failures.append("\(label): \(frames.count)/\(expected) frames") }
         for frame in frames {
@@ -198,6 +233,9 @@ func checkMenuBarResources() -> Bool {
         "cadenceComparisons": cadenceComparisons,
         "catVariableCadenceFrames": differentCatFrames, "catTransitionsRendered": catTransitions.sorted(),
         "menuBarFramesChecked": menuBarFramesChecked, "menuBarWidths": menuBarWidths,
+        "sourceIconsChecked": sourceIconsChecked,
+        "sourceIconFallbacksChecked": sourceIconFallbacksChecked,
+        "unreadableSourceIconFallbackChecked": unreadableSourceIconFallbackChecked,
         "template": true, "logicalSize": [36,20], "scales": [1,2], "failures": failures]
     if let data = try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys]),
        let text = String(data: data, encoding: .utf8) { print(text) }

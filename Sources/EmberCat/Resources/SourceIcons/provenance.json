@@ -1,0 +1,90 @@
+{
+  "project": "lobehub/lobe-icons",
+  "commit": "8b7bbc433d38437fa2b0cca58ae896917162b812",
+  "assets": [
+    {
+      "name": "codex",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/codex-color.png",
+      "sha256": "fcea9ddbaafdca236a8380cef2ecd3342ecd9914a7b080873873cf45f415686d",
+      "bytes": 7578
+    },
+    {
+      "name": "claudeCode",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/claudecode-color.png",
+      "sha256": "9ef1d98492f68c5c7766162af827dd4e0c9cb0d76b78fce22798985a792fca63",
+      "bytes": 1467
+    },
+    {
+      "name": "claudeDesktop",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/claude-color.png",
+      "sha256": "97b53fb85b3bf401ffeb8ee7c5ebad734ce9f6edc3038f242021c53bcc18e23d",
+      "bytes": 9337
+    },
+    {
+      "name": "deepseek",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/deepseek-color.png",
+      "sha256": "f98596fd7802ca0c5290c498fec578fa823988646332ee36c43b7920dc4936eb",
+      "bytes": 6493
+    },
+    {
+      "name": "opencode",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/opencode.png",
+      "sha256": "8dd736cfa2628863a6e008a134d2094da69727d7359caca5bd05fe322ab13905",
+      "bytes": 1773
+    },
+    {
+      "name": "gemini",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/geminicli-color.png",
+      "sha256": "ef72d48ebab74c96296d34c8ad5d87685f90765d21f31d0884049bb45a8b62e5",
+      "bytes": 10645
+    },
+    {
+      "name": "antigravity",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/antigravity-color.png",
+      "sha256": "ac20d11802a405491048957d68c84f7303ceaf682a95cf890263452ccdd97897",
+      "bytes": 44733
+    },
+    {
+      "name": "workbuddy",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/workbuddy-color.png",
+      "sha256": "457e38549501909975f71430cfba26953e3eed1b4a0e8e44075b6262ccb61ce8",
+      "bytes": 40370
+    },
+    {
+      "name": "kimi",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/kimi-color.png",
+      "sha256": "4e223a0e1f363d1caeddf21065e08d3f84f5a7acb199ec2463b6d8e45334f310",
+      "bytes": 3551
+    },
+    {
+      "name": "grokBuild",
+      "upstream": "https://raw.githubusercontent.com/lobehub/lobe-icons/8b7bbc433d38437fa2b0cca58ae896917162b812/packages/static-png/light/grok.png",
+      "sha256": "f10ec0b2322f9d65a973d3d48fcdc41270d8b123a5d36e2826dabf9dcefb0762",
+      "bytes": 6883
+    }
+  ],
+  "note": "Brand assets identify token sources. Prefer the installed desktop app icon when available.",
+  "additionalSources": [
+    {
+      "name": "omp",
+      "project": "can1357/oh-my-pi",
+      "commit": "256b3211bca7458391866a8bcc9369902664be55",
+      "upstream": "https://raw.githubusercontent.com/can1357/oh-my-pi/256b3211bca7458391866a8bcc9369902664be55/packages/collab-web/public/favicon-512x512.png",
+      "sha256": "0e4b4837cb741ed9db6d228f1b546de75590cd3e818c7cc984d42d115831bdba",
+      "bytes": 16366,
+      "licenseFile": "oh-my-pi-LICENSE.txt",
+      "licensePreview": "MIT License\n\nCopyright (c) 2025 Mario Zechner\nCopyright (c) 2025-2026 Can Bölük\nCopyright (c) 2026 Stencil Labs, Inc.\n\nPermission is hereby granted, free of charge, to any person o"
+    },
+    {
+      "name": "zcode",
+      "project": "zai-org/ZCode",
+      "commit": "a60ba6a7e5a06742270ca605f5d2cc2766afa7e1",
+      "upstream": "https://raw.githubusercontent.com/zai-org/ZCode/a60ba6a7e5a06742270ca605f5d2cc2766afa7e1/packages/desktop/build/icons/512x512.png",
+      "sha256": "8b3453fe890576be4fb593ed378a08c3882cdf2aab928f924eb1dc3e8e354e46",
+      "bytes": 168301,
+      "licenseFile": "zcode-LICENSE.txt",
+      "licensePreview": "\n                                 Apache License\n                           Version 2.0, January 2004\n                        http://www.apache.org/licenses/\n\n   TERMS AND CONDITIO",
+      "noticeFile": "zcode-NOTICE.md"
+    }
+  ]
+}
