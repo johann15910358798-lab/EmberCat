@@ -1,23 +1,9 @@
 // Direct, continuous samples. PixelFX's 12 fps actor player is intentionally unused.
-import { skeleton } from '../../Vendor/PixelFX/core/rig.js';
 import { TAU, rng, wrap, smooth, ease } from '../../Vendor/PixelFX/core/math.js';
 import { readFileSync } from 'node:fs';
+import { humanGait, measurements } from './human-gait.mjs';
 
 const designs = JSON.parse(readFileSync(new URL('./suite-design.json', import.meta.url), 'utf8'));
-const input = JSON.parse(readFileSync(0, 'utf8'));
-const measurements = {
-  pelvis:19.3, spine1:2.8, spine2:3.6, neckUp:1.0, headUp:7.0,
-  shoulderUp:-0.6, shoulderOut:3.0, hipDown:1.5, hipOut:1.1,
-  thigh:8.0, shin:7.8, upper:4.7, fore:3.7, turn:0.5,
-};
-
-function keyPath(phase, keys) {
-  const p = wrap(phase, 1);
-  const i = Math.max(0, keys.findIndex((k, n) => n + 1 < keys.length && p < keys[n + 1][0]));
-  const a = keys[i], b = keys[i + 1], u = smooth(a[0], b[0], p);
-  return {x:a[1]+(b[1]-a[1])*u, lift:a[2]+(b[2]-a[2])*u,
-    pitch:a[3]+(b[3]-a[3])*u, support:p<0.22, phase:p};
-}
 
 function contactDust(mode, config, phase) {
   const recipes = {
@@ -46,7 +32,7 @@ function solveLeg(hip, ankle, thigh=70, shin=81) {
   return [hip[0]+dx/d*along+dy/d*h,hip[1]+dy/d*along-dx/d*h];
 }
 
-function sample(mode, config, phase, feet) {
+function sample(mode, config, phase) {
   const t=phase*TAU, row={phase,particles:contactDust(mode,config,phase)};
   if (mode === '06-bicycle') {
     const a=t*config.pedalTurns;
@@ -74,31 +60,15 @@ function sample(mode, config, phase, feet) {
         squash:0.64,lobe:1};
     }).filter(p=>p.opacity>0);
   } else {
-    let {near,far}=feet;
-    if(mode==='05-board') {
-      near={x:2.7,lift:3.0,pitch:-13,support:true,phase};
-      far=keyPath(phase,[[0,0.8,0,0],[0.22,-7.2,0,0],[0.44,-6.3,3.9,-24],
-        [0.63,-1.8,3.2,-13],[0.78,-1.8,3.2,-13],[1,0.8,0,0]]);
-    }
-    const offset=mode==='04-rollers'?2:0;
-    const pose={turn:0.5,lean:config.lean,crouch:config.crouch+0.16*Math.cos(2*t),
-      ffx:near.x,ffy:-(4.8+near.lift+offset),fbx:far.x,fby:-(4.8+far.lift+offset),
-      fzz:0.8,bzz:-0.8,
-      fx:-0.8-config.armSwing*Math.cos(t),fy:-config.handHeight-0.4*Math.sin(t),fz:1.5,
-      bx:1.8+config.armSwing*Math.cos(t),by:-config.handHeight+0.4*Math.sin(t),bz:-1.5};
-    if(mode==='05-board') {
-      pose.fx=-3.8-0.8*Math.cos(t);pose.bx=5.2+0.8*Math.cos(t);
-      pose.fy=-18.7;pose.by=-19.8;
-    }
-    Object.assign(row,{pose,near,far,joints:skeleton(pose,measurements).joints,
-      wheelAngle:5*t,braidAngle:config.braid+2.0*Math.sin(t-0.7)});
+    Object.assign(row,humanGait(mode,config,phase));
+    row.particles=contactDust(mode,config,phase);
   }
   return row;
 }
 
 const modes={};
 for(const [mode,config] of Object.entries(designs)) {
-  const rows=input[mode] || Array.from({length:config.frames+1},(_,i)=>({phase:i/config.frames}));
+  const rows=Array.from({length:config.frames+1},(_,i)=>({phase:i/config.frames}));
   modes[mode]={config,measurements:mode<'06'?measurements:null,
     poses:rows.slice(0,config.frames).map(row=>sample(mode,config,row.phase,row)),
     endpoint:sample(mode,config,1,rows[config.frames])};

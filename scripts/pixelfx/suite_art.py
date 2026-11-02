@@ -34,76 +34,12 @@ def shape(draw,kind,points,**kwargs):
     getattr(draw,kind)([(x*ART_SCALE,y*ART_SCALE) for x,y in points],**kwargs)
 
 
-@lru_cache(maxsize=1)
-def accessories():
-    skate=polygon(source('04-rollers'),[(226,402),(264,402),(267,414),(299,428),(301,443),
-        (299,469),(222,469),(222,437)])
-    board=polygon(source('05-board'),[(137,413),(223,414),(225,394),(264,394),(271,404),
-        (301,409),(341,406),(355,413),(353,472),(137,472)])
-    return skate,board
-
-
-def wheel_spokes(layer,centers,angle,radius,stroke=1.5):
-    draw=ImageDraw.Draw(layer)
-    for x,y in centers:
-        # Keep source tires, boots, deck and axle; replace only the inner hub.
-        shape(draw,'ellipse',[(x-radius,y-radius),(x+radius,y+radius)],fill='white')
-        for n in range(3):
-            a=angle+n*math.tau/3
-            shape(draw,'line',[(x,y),(x+radius*math.cos(a),y+radius*math.sin(a))],
-                  fill='#111111',width=max(1,round(stroke*ART_SCALE)))
-
-
 def draw_gait(mode,config,row):
-    parts=cutouts()
-    joints={key:(213+p[0]*10,460+p[1]*10) for key,p in row['joints'].items()}
-    result=Image.new('RGBA',ART_SIZE,(255,255,255,0))
-    skate,board=accessories()
-    def limb(name,a,b):
-        result.alpha_composite(affine(parts[name],*ANCHORS[name],joints[a],joints[b]))
-    if mode=='05-board':
-        deck=board.copy()
-        wheel_spokes(deck,[(177,448),(305,447)],row['wheelAngle'],5.5)
-        result.alpha_composite(rigid(deck,(240,400),joints['ankleN']))
-    for side,foot in [('F',row['far']),('N',row['near'])]:
-        ankle=joints['ankle'+side]
-        if mode=='04-rollers':
-            shoe=skate.copy()
-            wheel_spokes(shoe,[(240,455),(282,455)],row['wheelAngle'],6)
-            result.alpha_composite(rigid(shoe,(247,410),ankle,foot['pitch']*0.5))
-        elif not (mode=='05-board' and side=='N'):
-            result.alpha_composite(rigid(parts['shoe'],(266,433),ankle,13+foot['pitch']))
-        a,k=np.asarray(ankle),np.asarray(joints['knee'+side])
-        cuff=a+(k-a)/np.linalg.norm(k-a)*15
-        d=ImageDraw.Draw(result)
-        shape(d,'line',[a,cuff],fill='#151515',width=11*ART_SCALE)
-        shape(d,'line',[a,cuff],fill='white',width=7*ART_SCALE)
-        shape(d,'ellipse',[k-11,k+11],fill='#111111')
-        limb('shin'+side,'knee'+side,'ankle'+side)
-        limb('thigh'+side,'hip'+side,'knee'+side)
-    def arm(side):
-        # The original sleeve pieces overlap in the drawing but separate when
-        # the elbow bends. A cloth-colored joint underneath closes that seam.
-        elbow=np.asarray(joints['elbow'+side])
-        shoulder=np.asarray(joints['shoulder'+side])
-        d=ImageDraw.Draw(result)
-        for center,radius in [(shoulder,9),(elbow,9)]:
-            shape(d,'ellipse',[center-radius,center+radius],fill='white',outline='#151515',width=2*ART_SCALE)
-        limb('upper'+side,'shoulder'+side,'elbow'+side)
-        limb('fore'+side,'elbow'+side,'hand'+side)
-    arm('F')
-    limb('torso','pelvis','neck')
-    arm('N')
-    neck=joints['neck'];t=row['phase']*math.tau
-    braid=rigid(parts['braid'],(157,177),(157,177),row['braidAngle'])
-    result.alpha_composite(rigid(braid,(213,203),neck,.45*math.sin(t)))
-    result.alpha_composite(rigid(parts['head'],(213,203),neck,.45*math.sin(t)))
+    from gait_art import draw_pose
+    result=draw_pose(row)
     body=Drawing(result).mask
-    dust=draw_dust(row)
-    # Ground effects are behind the shoes. Preserve white interiors as occluders.
-    silhouette=result.getchannel('A')
-    solid=register_gait(silhouette)
-    dust=ImageChops.multiply(dust,ImageChops.invert(solid))
+    solid=register_gait(result.getchannel('A'))
+    dust=ImageChops.multiply(draw_dust(row),ImageChops.invert(solid))
     return union(body,dust),body,dust
 
 

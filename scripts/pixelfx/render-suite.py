@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image,ImageDraw,ImageStat,ImageChops
 
-from makima_design import cat_foot_samples,SCALE,SAMPLING
+from makima_design import SCALE,SAMPLING
 from suite_art import render,export_image
 
 ROOT=Path(__file__).resolve().parents[2]
@@ -24,10 +24,7 @@ def digest(path):
 
 
 def motion(node):
-    samples={mode:cat_foot_samples(config['frames'],config['stride'],config['lift'],config['duty'])
-        for mode,config in DESIGNS.items() if 'stride' in config}
-    return json.loads(subprocess.check_output([node,str(Path(__file__).with_name('makima-suite.mjs'))],
-        input=json.dumps(samples),text=True))
+    return json.loads(subprocess.check_output([node,str(Path(__file__).with_name('makima-suite.mjs'))],text=True))
 
 
 def export_mode(mode,data,output,draft):
@@ -123,9 +120,10 @@ def main():
     dependencies=['scripts/pixelfx/suite-design.json','scripts/pixelfx/makima-suite.mjs',
         'scripts/pixelfx/suite_art.py','scripts/pixelfx/render-suite.py','scripts/pixelfx/makima_design.py',
         'scripts/pixelfx/vehicle_art.py','scripts/motion_rigs.py',
+        'scripts/pixelfx/human-gait.mjs','scripts/pixelfx/gait_art.py',
         'Vendor/PixelFX/core/rig.js','Vendor/PixelFX/core/math.js']
     dependencies += ['Artwork/Makima/Modes/'+mode+'.png' for mode in ['01-walk',*DESIGNS]]
-    manifest=dict(data,generator='Source-art skinning + shared cat foot_path + PixelFX skeleton and deterministic effects',
+    manifest=dict(data,generator='Source character + authored human gait, continuous clothing contours and deterministic PixelFX effects',
         upstreamCommit='a84159688af3ca37a4be05a0d422b94451b2e24e',
         dependenciesSHA256={name:digest(ROOT/name) for name in dependencies})
     # Independent mode folders can render concurrently; installation and the

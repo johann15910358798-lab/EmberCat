@@ -1,14 +1,14 @@
-# EmberCat · 玛奇玛动作试验
+# EmberCat 0.6.12
 
 macOS 菜单栏 Agent 测速宠物。首次默认显示原创胖黑猫。左/右键点击图标打开紧凑菜单，选择「Token 来源」后在同一浮层查看各来源，左上角返回菜单。菜单内可切换玛奇玛，选择会保留到下次启动。
 
-## 当前试验分支
+## 0.6.12 玛奇玛连续动作
 
-`codex/makima-pixelfx-walk` 基于 0.6.6 的 `600aeaa`，现包含九种玛奇玛连续动作和高清过渡预览，尚未发布新版本。原工作目录中的未提交改动不在这个分支里。
+九种玛奇玛动作使用连续循环，并提供全部动作和上下车过程的高清预览。版本为 0.6.12 / build 28；本地安装包为 [EmberCat-0.6.12.dmg](dist/EmberCat-0.6.12.dmg)。
 
-人物的脸、刘海、辫子与服装继续取自既有原画。走路、快走、跑步、轮滑和滑板使用 PixelFX 固定骨长骨架，并直接复用黑猫的 `foot_path` 与 `body_transform`。快走 84 帧 / 1.4 秒，跑步 72 帧 / 1.2 秒，走路 96 帧 / 1.6 秒；六种载具各为 144 帧 / 2.4 秒。所有运动与切换均以 60 Hz 调度，待机继续停止刷新。
+人物的脸、刘海、辫子和衬衫继续取自既有原画。走路至滑板五档重新编排双腿动作与重心，摆臂使用固定长度的二维关节，裤腿、袖子、鞋和轮具使用连续轮廓，消除旧切片关节的断开与重叠。走路包含脚跟落地、支撑、抬跟和摆腿；跑步有腾空和屈臂。黑猫仅共享图像变换与抗锯齿导出方式，人物不再套用猫的脚步轨迹或通用三维骨架。快走 84 帧 / 1.4 秒，跑步 72 帧 / 1.2 秒，走路 96 帧 / 1.6 秒；六种载具各为 144 帧 / 2.4 秒。所有运动与切换均以 60 Hz 调度，待机继续停止刷新。
 
-轮滑交替蹬地与收腿；滑板固定支撑脚，另一脚蹬地、收回滑行；自行车双脚沿相反的曲柄位置踩踏，车轮与辫子随动。摩托车和跑车有转轮、悬挂及后轮接地扬尘。飞行背包有悬停起伏、腿部随动、变化的喷流和尾迹。运行速度仅选择动作，不改变玛奇玛同档步频。
+轮滑有向后蹬腿、抬轮回收和单脚滑行；滑板支撑脚固定在板面，另一脚蹬地、抬过板面，随后双脚站板滑行。支撑、回收与重心变化分别编排，循环处的脚步速度连续。自行车双脚沿相反的曲柄位置踩踏，车轮与辫子随动。摩托车和跑车有转轮、悬挂及后轮接地扬尘。飞行背包有悬停起伏、腿部随动、变化的喷流和尾迹。运行速度仅选择动作，不改变玛奇玛同档步频。
 
 菜单栏仍使用 36×20 pt 的 1×/2× PNG；全部动作和 45 组上下车过渡另有 576×320 高清预览。过渡按新循环实测的头部位置与大小重新配准，保留四张原画姿势，以 60 Hz 平滑混合；源动作在切换开始时继续运动。过渡仍是原画关键帧混合，放大慢放时可见短暂叠影，尚未重新逐帧绘制所有上下车动作。放大预览在过渡期间也保持高清。预览缓存最多保留三个动作/过渡集，避免浏览整套后常驻全部高清帧。
 
@@ -31,9 +31,9 @@ open work/makima-suite/comparison.html
 
 整套预览包有独立 bundle ID，启动后只打开模拟速度窗口，不读取真实 Token 会话，也不覆盖 `/Applications/EmberCat.app`。HTML 可逐档比较原版/新动画、查看实际尺寸、明暗背景、半速、逐帧，以及任意两档之间的切换。GIF 是 30 fps 查看副本；整套九动作总览播放 9.6 秒，不人为拼接不同周期的回环。完整 60 fps 请看 HTML 或原生预览。
 
-当前仍是既有角色原画的分层派生与动作重制，未使用新的 AI 人物原画。技术检查不代表用户认可人物造型。原走路 16 张、车辆 32 张、其余六档 96 张 1×/2× 文件分别保存在 `Artwork/Makima/PixelFX-Walk/original/`、`PixelFX-Vehicles/original/`、`PixelFX-Suite/original/`；360 张旧过渡 PNG 保存在 `PixelFX-Transitions/original/`。各自 manifest 保存来源、脚本和输出哈希。
+本次为既有角色原画与重画肢体轮廓的动作重制，未使用新的 AI 人物原画。技术检查不代表用户认可动作观感。原走路 16 张、车辆 32 张、其余六档 96 张 1×/2× 文件分别保存在 `Artwork/Makima/PixelFX-Walk/original/`、`PixelFX-Vehicles/original/`、`PixelFX-Suite/original/`；360 张旧过渡 PNG 保存在 `PixelFX-Transitions/original/`。各自 manifest 保存来源、脚本和输出哈希。
 
-PixelFX 固定为 `a84159688af3ca37a4be05a0d422b94451b2e24e`，来源与本地修改见 `Vendor/PixelFX/UPSTREAM.md`。源码图像、黑猫生产资源和已安装应用均独立保留。
+PixelFX 固定为 `a84159688af3ca37a4be05a0d422b94451b2e24e`，用于确定性粒子、缓动与周期计算；来源与本地修改见 `Vendor/PixelFX/UPSTREAM.md`。源码图像、黑猫生产资源和已安装应用均独立保留。
 
 ## 形象与动作
 
@@ -137,9 +137,9 @@ dist/EmberCat.app/Contents/MacOS/EmberCat --export-cat-preview /tmp/embercat-cat
 python3 scripts/render-cat-review.py /tmp/embercat-cat-review /tmp/embercat-cat-gifs
 ```
 
-原画和提示词在 `Artwork/`，猫的提示词为 `Artwork/Prompts/cat-master-v3.txt`。`scripts/motion_rigs.py` 定义猫的动作，并向本次试作提供共用的脚步与变换函数。`scripts/prepare-pets.py --cat-only` 只重建黑猫。若执行不带参数的 `prepare-pets.py`，它会恢复旧版玛奇玛资源，随后必须依次运行上方四个 PixelFX 渲染命令，才能重建本分支的 3252 张菜单栏 PNG；放大预览另有 1393 张 PNG（包含黑猫走路与 180 张过渡关键帧）。
+原画和提示词在 `Artwork/`，猫的提示词为 `Artwork/Prompts/cat-master-v3.txt`。`scripts/motion_rigs.py` 定义猫的动作并提供共用图像变换；`scripts/pixelfx/human-gait.mjs` 独立编排人物步态，`gait_art.py` 绘制连续的肢体与衣服轮廓。`scripts/prepare-pets.py --cat-only` 只重建黑猫。若执行不带参数的 `prepare-pets.py`，它会恢复旧版玛奇玛资源，随后必须依次运行上方四个 PixelFX 渲染命令，才能重建本分支的 3252 张菜单栏 PNG；放大预览另有 1393 张 PNG（包含黑猫走路与 180 张过渡关键帧）。
 
-`check-motion-art.py` 检查猫的支撑与循环、圆球转动、收拢精确首尾姿势、全部模板格式、原画对照与新走路资源哈希。`scripts/pixelfx/check-makima.py` 检查骨长、脚步支撑、96 帧差异、循环接缝和来源哈希。`scripts/pixelfx/check-vehicles.py` 检查两个动作各 144 张不同帧、三位文件名顺序、接地扬尘可见性与方向、画布边界、首尾衔接及高分辨率资源哈希。这些检查不代替对角色形象的视觉判断。
+`check-motion-art.py` 检查猫的支撑与循环、圆球转动、收拢精确首尾姿势、全部模板格式、原画对照与新走路资源哈希。`scripts/pixelfx/check-makima.py` 检查骨长、脚步支撑、96 帧差异、循环接缝和来源哈希。`scripts/pixelfx/check-vehicles.py` 检查两个动作各 144 张不同帧、三位文件名顺序、接地扬尘可见性与方向、画布边界、首尾衔接及高分辨率资源哈希。`gait_checks.py` 还检查脚底支撑、膝盖方向、轮滑收腿及滑板蹬地/双脚滑行的板面接触。这些检查不代替对动作观感的视觉判断。
 
 `check-cat-motion.sh` 检查猫的相位连续性、加减速上限、不同刷新率的一致性、边界防抖、转正后展开、过渡中的最新速度、全部动作之间的往返以及停止计时器。`check-motion.sh` 保留玛奇玛全部 90 个有方向状态组合、跳速、过渡、防抖与固定节奏的回归检查。
 

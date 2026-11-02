@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 
 from PIL import Image,ImageChops,ImageStat
+from gait_checks import check_pose,support_slip,check_board,check_skates
 
 ROOT=Path(__file__).resolve().parents[2]
 RES=ROOT/'Sources/EmberCat/Resources'
@@ -33,25 +34,14 @@ def main():
         bone_error=0
         if data['measurements']:
             for row in poses:
-                j=row['joints']
-                for side,key in [('N','near'),('F','far')]:
-                    for a,b,length in [('hip','knee','thigh'),('knee','ankle','shin'),('shoulder','elbow','upper'),('elbow','hand','fore')]:
-                        error=abs(math.dist(j[a+side],j[b+side])-data['measurements'][length])
-                        bone_error=max(bone_error,error)
-                    foot=row[key];offset=2 if mode=='04-rollers' else 0
-                    assert abs(j['ankle'+side][0]-foot['x'])<1e-6,(mode,'unreachable foot')
-                    assert abs(j['ankle'+side][1]+3+foot['lift']+offset)<1e-6,(mode,'foot not on authored path')
-            assert bone_error<1e-8,(mode,'bone stretch')
+                bone_error=max(bone_error,check_pose(row,data['measurements']))
         if mode in ['02-brisk','03-run']:
             for side,key in [('N','near'),('F','far')]:
-                support=[row for row in poses if row[key]['support']]
                 velocity=2*config['stride']/config['duty']
-                world=[row['joints']['ankle'+side][0]+velocity*row[key]['phase'] for row in support]
-                assert max(world)-min(world)<1e-7,(mode,'foot slips on ground')
+                support_slip(poses,key,side,velocity)
             if mode=='03-run':assert any(not r['near']['support'] and not r['far']['support'] for r in poses),'run lacks flight phase'
-        if mode=='05-board':
-            assert max(math.dist(r['joints']['ankleN'],poses[0]['joints']['ankleN']) for r in poses)<1e-8,'board support foot moves'
-            assert any(r['far']['support'] for r in poses) and max(r['far']['lift'] for r in poses)>3.8,'board has no push/recovery'
+        if mode=='05-board':check_board(poses)
+        if mode=='04-rollers':check_skates(poses)
         if mode=='06-bicycle':
             for row in poses:
                 near,far=row['legs']

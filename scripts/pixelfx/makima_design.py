@@ -1,7 +1,8 @@
-"""Identity-locked Makima artwork on the cat's continuous-motion pipeline.
+"""Preserved source cutouts and shared supersampled export transforms.
 
-Face, bangs, braid and clothing come from the approved source, not a geometric
-redraw. The cat's foot_path/body_transform functions are reused directly.
+The face, bangs, braid and shirt come from the source drawing. Character gait
+is authored separately in human-gait.mjs; the cat contributes only the rigid
+image transform and the same small-image antialiasing pipeline.
 """
 import math
 import sys
@@ -12,7 +13,7 @@ import numpy as np
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from motion_rigs import foot_path, body_transform
+from motion_rigs import body_transform
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCE = ROOT/'Artwork/Makima/Modes/01-walk.png'
@@ -96,49 +97,3 @@ class Drawing:
             (ART_SCALE/(SCALE*SAMPLING),0,(ORIGIN[0]-18/SCALE)*ART_SCALE,
              0,ART_SCALE/(SCALE*SAMPLING),(ORIGIN[1]-19.2/SCALE)*ART_SCALE),
             Image.Resampling.BICUBIC)
-
-
-def draw_character(row):
-    parts = cutouts()
-    t = row['phase']*math.tau
-    joints = {key:(213+p[0]*10,460+p[1]*10) for key,p in row['joints'].items()}
-    result = Image.new('RGBA', ART_SIZE, (255,255,255,0))
-    def limb(name,a,b):
-        result.alpha_composite(affine(parts[name],*ANCHORS[name],joints[a],joints[b]))
-    for side,foot in [('F',row['far']),('N',row['near'])]:
-        ankle = joints['ankle'+side]
-        result.alpha_composite(rigid(parts['shoe'],(266,433),ankle,13+foot['pitch']))
-        a,k = np.asarray(ankle),np.asarray(joints['knee'+side])
-        cuff = a+(k-a)/np.linalg.norm(k-a)*15
-        d = ImageDraw.Draw(result)
-        points = [tuple(p*ART_SCALE) for p in [a,cuff]]
-        d.line(points, fill=(18,18,18,255), width=11*ART_SCALE)
-        d.line(points, fill=(255,255,255,255), width=7*ART_SCALE)
-        x,y = k*ART_SCALE
-        r = 11*ART_SCALE
-        d.ellipse((x-r,y-r,x+r,y+r),fill=(15,15,15,255))
-        limb('shin'+side,'knee'+side,'ankle'+side)
-        limb('thigh'+side,'hip'+side,'knee'+side)
-    limb('upperF','shoulderF','elbowF')
-    limb('foreF','elbowF','handF')
-    limb('torso','pelvis','neck')
-    limb('upperN','shoulderN','elbowN')
-    limb('foreN','elbowN','handN')
-    neck = joints['neck']
-    braid = rigid(parts['braid'],(157,177),(157,177),1.4*math.sin(t-.6))
-    result.alpha_composite(rigid(braid,(213,203),neck,.4*math.sin(t)))
-    result.alpha_composite(rigid(parts['head'],(213,203),neck,.4*math.sin(t)))
-    return Drawing(result)
-
-
-def cat_foot_samples(frames, stride, lift, duty):
-    rows = []
-    for i in range(frames+1):
-        row = {'phase':i/frames}
-        for key,offset in [('near',0),('far',.5)]:
-            phase = (i/frames+offset)%1
-            x,clearance,support,swing = foot_path(phase,stride,lift,duty)
-            row[key] = dict(x=x,lift=clearance,support=support,phase=phase,
-                pitch=-12*math.sin(math.pi*swing))
-        rows.append(row)
-    return rows

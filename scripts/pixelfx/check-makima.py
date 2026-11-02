@@ -6,6 +6,7 @@ import json
 import math
 from pathlib import Path
 from PIL import Image, ImageChops, ImageStat
+from gait_checks import check_pose,support_slip as measure_support_slip
 
 ROOT=Path(__file__).resolve().parents[2]
 parser=argparse.ArgumentParser(description=__doc__)
@@ -29,18 +30,12 @@ largest_bone_error=0
 support_slip=[]
 for suffix,side in [('N','near'),('F','far')]:
     for row in poses:
-        j=row['joints']
-        for a,b,measurement in [('hip','knee','thigh'),('knee','ankle','shin'),('shoulder','elbow','upper'),('elbow','hand','fore')]:
-            error=abs(math.dist(j[a+suffix],j[b+suffix])-measurements[measurement])
-            largest_bone_error=max(largest_bone_error,error)
-            assert error<1e-8,(row['phase'],suffix,a,error)
+        largest_bone_error=max(largest_bone_error,check_pose(row,measurements))
     planted=[row for row in poses if row[side]['support']]
     assert len(planted)>40
-    assert max(abs(row['joints']['ankle'+suffix][1]+3) for row in planted)<1e-8
+    assert all(abs(row[side]['lift'])<1e-8 for row in planted)
     velocity=2*rig['gait']['stride']/rig['gait']['duty']
-    world=[row['joints']['ankle'+suffix][0]+velocity*row[side]['phase'] for row in planted]
-    slip=max(world)-min(world);support_slip.append(slip)
-    assert slip<1e-8,(suffix,'planted foot slides',slip)
+    support_slip.append(measure_support_slip(poses,side,suffix,velocity))
     assert max(row[side]['lift'] for row in poses)>rig['gait']['lift']*.95
 
 report={'pass':True,'frames':96,'fps':60,'duration':1.6,'maximumBoneLengthError':largest_bone_error,

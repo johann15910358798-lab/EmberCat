@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Render identity-locked Makima with shared cat motion helpers and PixelFX joints."""
+"""Render the source character with an authored two-legged walk cycle."""
 import argparse
 import base64
 import hashlib
@@ -11,13 +11,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from makima_design import draw_character, cat_foot_samples, SIZE, SCALE, SAMPLING, ORIGIN
+from makima_design import SIZE, SCALE, SAMPLING, ORIGIN
+from gait_art import draw_gait as draw_character
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT/'scripts'))
 from motion_rigs import cat_animations, ink
-
-GAIT = dict(stride=5.8, lift=1.8, duty=.62)
 
 
 def digest(path):
@@ -133,10 +132,8 @@ def main():
     parser.add_argument('--install', action='store_true')
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    samples = cat_foot_samples(96, **GAIT)
     rig = json.loads(subprocess.check_output(
-        [args.node, str(Path(__file__).with_name('makima-walk.mjs'))],
-        input=json.dumps(dict(gait=GAIT, samples=samples)), text=True))
+        [args.node, str(Path(__file__).with_name('makima-walk.mjs'))],text=True))
     drawings = [draw_character(row) for row in rig['poses']]
     masks = [art.mask for art in drawings]
     details = export_masks(masks, args.out)
@@ -148,13 +145,14 @@ def main():
     for i, mask in enumerate(masks):
         sheet.alpha_composite(image_from_mask(mask, (576, 320)), ((i%12)*576, (i//12)*320))
     sheet.save(args.out/'walk-sheet.png', optimize=True)
-    source = Path(__file__).with_name('makima_design.py')
-    result = dict(generator='Approved Makima drawing + shared cat foot_path/body_transform + PixelFX skeleton',
+    source = Path(__file__).with_name('gait_art.py')
+    result = dict(generator='Preserved source face and shirt + authored side-view gait and continuous clothing contours',
         upstreamCommit='a84159688af3ca37a4be05a0d422b94451b2e24e',
         source=str(source.relative_to(ROOT)), sourceSHA256=digest(source),
         dependenciesSHA256={name:digest(ROOT/name) for name in [
             'scripts/motion_rigs.py', 'Artwork/Makima/Modes/01-walk.png', 'scripts/pixelfx/makima-walk.mjs',
-            'scripts/pixelfx/render-makima.py', 'Vendor/PixelFX/core/rig.js']},
+            'scripts/pixelfx/render-makima.py', 'scripts/pixelfx/human-gait.mjs',
+            'scripts/pixelfx/makima_design.py', 'Vendor/PixelFX/core/math.js']},
         frames=96, duration=1.6, fps=60, rig=rig, render=details)
     (args.out/'manifest.json').write_text(json.dumps(result, ensure_ascii=False, indent=2)+'\n')
     if args.install:
