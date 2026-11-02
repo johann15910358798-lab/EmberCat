@@ -28,7 +28,11 @@ enum SpeedTier: String, CaseIterable, Identifiable {
     }
 
     var frameCount: Int {
-        self == .idle ? 1 : 8
+        switch self {
+        case .idle: 1
+        case .walk: 96
+        default: 8
+        }
     }
 
     var compactTitle: String {

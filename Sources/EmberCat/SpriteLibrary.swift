@@ -8,6 +8,7 @@ final class SpriteLibrary {
     private var cache: [String: [NSImage]] = [:]
     private var menuBarCache: [String: [NSImage]] = [:]
     private var menuBarBoundsCache: [String: NSRect] = [:]
+    private var previewCache: [PetStyle: [NSImage]] = [:]
 
     private init() {}
 
@@ -20,6 +21,39 @@ final class SpriteLibrary {
     }
 
     func catCurlFrames() -> [NSImage] { load("Cat/curl") }
+
+    /// Detail images are separate from the small menu assets; never upscale a 2x PNG 8x.
+    func walkingPreviewFrames(for style: PetStyle) -> [NSImage] {
+        if let found = previewCache[style] { return found }
+        let folderName = style == .cat ? "Cat" : "Makima"
+        guard let folder = AppResources.directory("PetPreview/\(folderName)/walk") else { return [] }
+        let frames = (1...96).compactMap { index -> NSImage? in
+            let url = folder.appendingPathComponent(String(format: "frame-%02d.png", index))
+            guard let data = try? Data(contentsOf: url), let rep = NSBitmapImageRep(data: data),
+                  rep.pixelsWide == 576, rep.pixelsHigh == 320 else { return nil }
+            rep.size = Self.imageSize
+            let image = NSImage(size: Self.imageSize)
+            image.addRepresentation(rep)
+            image.isTemplate = true
+            return image
+        }
+        previewCache[style] = frames
+        return frames
+    }
+
+    func previewImage(for style: PetStyle, director: MotionDirector) -> NSImage? {
+        let phase: Double
+        if style == .cat && director.cat.gait == .walk && director.cat.transition == nil {
+            phase = director.cat.phase
+        } else if style == .makima && director.mode == .walk && director.transition == nil {
+            phase = director.clock.phase(cycleDuration: SpeedTier.walk.cycleDuration)
+        } else {
+            return image(for: style, director: director)
+        }
+        let frames = walkingPreviewFrames(for: style)
+        guard frames.count == 96 else { return image(for: style, director: director) }
+        return frames[AnimationClock.frameIndex(phase: phase, frameCount: frames.count)]
+    }
 
     func catMenuBarFrames(for gait: CatGait) -> [NSImage] {
         let key = "Cat/\(gait.rawValue)"

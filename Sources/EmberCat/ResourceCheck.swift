@@ -15,6 +15,20 @@ func checkMenuBarResources() -> Bool {
     var sourceIconsChecked: [String] = []
     var sourceIconFallbacksChecked = 0
     var unreadableSourceIconFallbackChecked = false
+    var previewDetailFrames = 0
+    for style in [PetStyle.cat, .makima] {
+        let frames = SpriteLibrary.shared.walkingPreviewFrames(for: style)
+        if frames.count != 96 { failures.append("PetPreview/\(style): missing walking detail images") }
+        for image in frames {
+            let reps = image.representations.compactMap { $0 as? NSBitmapImageRep }
+            guard image.isTemplate, image.size == SpriteLibrary.imageSize, reps.count == 1,
+                  reps[0].pixelsWide == 576, reps[0].pixelsHigh == 320, reps[0].hasAlpha else {
+                failures.append("PetPreview/\(style): invalid high-resolution detail image")
+                continue
+            }
+            previewDetailFrames += 1
+        }
+    }
     let missingIcons = SourceIconLibrary(resourceDirectory: nil, usesInstalledApplications: false)
     // Check bundled logos even when the corresponding desktop app is installed.
     // This exercises the same resource lookup in SwiftPM and packaged releases.
@@ -193,6 +207,23 @@ func checkMenuBarResources() -> Bool {
                 cadenceComparisons += 1
             }
     }
+    // Exercise the production-selected images for a whole 60 Hz walk cycle.
+    // Merely storing 96 PNGs must not pass if the playback path still repeats eight.
+    var walk = MotionDirector()
+    walk.setSpeed(3)
+    for _ in 0..<360 { walk.advance(by: 1.0/60) }
+    let firstWalkFrame = SpriteLibrary.shared.image(for: .makima, director: walk)
+    var walkFrames = Set<ObjectIdentifier>()
+    for _ in 0..<96 {
+        if let image = SpriteLibrary.shared.image(for: .makima, director: walk) {
+            walkFrames.insert(ObjectIdentifier(image))
+        }
+        walk.advance(by: 1.0/60)
+    }
+    if walk.mode != .walk || walk.transition != nil || walkFrames.count != 96
+        || SpriteLibrary.shared.image(for: .makima, director: walk) !== firstWalkFrame {
+        failures.append("Makima/walk: expected 96 distinct frames and a closed 1.6 s loop at 60 Hz")
+    }
     var lowCat = MotionDirector()
     lowCat.setSpeed(3)
     var highCat = MotionDirector()
@@ -230,7 +261,8 @@ func checkMenuBarResources() -> Bool {
     if catTransitions.count != 6 { failures.append("Cat: did not render all six gait transitions") }
     let report: [String: Any] = ["pass": failures.isEmpty, "framesChecked": checked,
         "transitionKeyframes": transitions, "directedPairs": directedPairs, "renderedPairs": renderedPairs,
-        "cadenceComparisons": cadenceComparisons,
+        "cadenceComparisons": cadenceComparisons, "pixelfxWalkDistinctFrames": walkFrames.count,
+        "previewDetailFrames": previewDetailFrames,
         "catVariableCadenceFrames": differentCatFrames, "catTransitionsRendered": catTransitions.sorted(),
         "menuBarFramesChecked": menuBarFramesChecked, "menuBarWidths": menuBarWidths,
         "sourceIconsChecked": sourceIconsChecked,

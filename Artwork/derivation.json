@@ -28,66 +28,596 @@
       "headWidth": 6.294777777777779
     },
     "Makima/Modes/01-walk": {
-      "frames": 8,
-      "scale": 0.04393203883495146,
+      "frames": 96,
+      "scale": 0.0433,
       "bounds": [
         [
-          46,
-          61,
-          328,
-          472
+          359,
+          40,
+          749,
+          604
         ],
         [
-          27,
-          61,
-          289,
-          471
+          359,
+          39,
+          746,
+          604
         ],
         [
-          10,
-          61,
-          276,
-          472
+          359,
+          38,
+          743,
+          604
         ],
         [
-          17,
-          61,
-          286,
-          472
+          359,
+          38,
+          740,
+          604
         ],
         [
-          46,
-          34,
-          334,
-          444
+          359,
+          38,
+          738,
+          604
         ],
         [
-          27,
-          33,
-          288,
-          445
+          359,
+          37,
+          735,
+          604
         ],
         [
-          12,
-          33,
-          293,
-          445
+          359,
+          37,
+          732,
+          604
         ],
         [
-          19,
-          33,
-          287,
-          445
+          358,
+          37,
+          730,
+          604
+        ],
+        [
+          358,
+          37,
+          727,
+          604
+        ],
+        [
+          358,
+          38,
+          724,
+          604
+        ],
+        [
+          358,
+          39,
+          722,
+          604
+        ],
+        [
+          358,
+          40,
+          722,
+          604
+        ],
+        [
+          358,
+          41,
+          722,
+          604
+        ],
+        [
+          357,
+          42,
+          722,
+          604
+        ],
+        [
+          358,
+          41,
+          722,
+          603
+        ],
+        [
+          357,
+          40,
+          722,
+          604
+        ],
+        [
+          357,
+          37,
+          722,
+          603
+        ],
+        [
+          357,
+          36,
+          722,
+          604
+        ],
+        [
+          357,
+          36,
+          722,
+          604
+        ],
+        [
+          357,
+          36,
+          722,
+          604
+        ],
+        [
+          357,
+          36,
+          722,
+          603
+        ],
+        [
+          357,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          357,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          603
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          603
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          603
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          604
+        ],
+        [
+          356,
+          36,
+          722,
+          603
+        ],
+        [
+          356,
+          37,
+          722,
+          604
+        ],
+        [
+          356,
+          37,
+          722,
+          604
+        ],
+        [
+          356,
+          37,
+          725,
+          604
+        ],
+        [
+          356,
+          37,
+          731,
+          604
+        ],
+        [
+          356,
+          37,
+          736,
+          604
+        ],
+        [
+          356,
+          37,
+          741,
+          603
+        ],
+        [
+          357,
+          37,
+          745,
+          604
+        ],
+        [
+          357,
+          37,
+          748,
+          604
+        ],
+        [
+          357,
+          37,
+          751,
+          604
+        ],
+        [
+          357,
+          38,
+          752,
+          603
+        ],
+        [
+          357,
+          38,
+          753,
+          604
+        ],
+        [
+          357,
+          38,
+          753,
+          604
+        ],
+        [
+          357,
+          38,
+          751,
+          604
+        ],
+        [
+          357,
+          38,
+          749,
+          604
+        ],
+        [
+          357,
+          38,
+          746,
+          604
+        ],
+        [
+          358,
+          38,
+          743,
+          604
+        ],
+        [
+          358,
+          38,
+          740,
+          604
+        ],
+        [
+          358,
+          38,
+          738,
+          604
+        ],
+        [
+          358,
+          37,
+          735,
+          604
+        ],
+        [
+          358,
+          37,
+          732,
+          604
+        ],
+        [
+          358,
+          37,
+          730,
+          604
+        ],
+        [
+          358,
+          37,
+          727,
+          604
+        ],
+        [
+          358,
+          37,
+          724,
+          604
+        ],
+        [
+          358,
+          37,
+          722,
+          604
+        ],
+        [
+          359,
+          37,
+          721,
+          604
+        ],
+        [
+          359,
+          37,
+          721,
+          604
+        ],
+        [
+          359,
+          36,
+          721,
+          604
+        ],
+        [
+          359,
+          36,
+          721,
+          603
+        ],
+        [
+          359,
+          36,
+          721,
+          604
+        ],
+        [
+          359,
+          36,
+          721,
+          603
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          603
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          603
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          603
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          361,
+          36,
+          721,
+          603
+        ],
+        [
+          361,
+          36,
+          721,
+          604
+        ],
+        [
+          361,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          36,
+          721,
+          603
+        ],
+        [
+          360,
+          36,
+          721,
+          604
+        ],
+        [
+          360,
+          37,
+          721,
+          604
+        ],
+        [
+          360,
+          37,
+          725,
+          604
+        ],
+        [
+          360,
+          37,
+          731,
+          604
+        ],
+        [
+          360,
+          37,
+          736,
+          604
+        ],
+        [
+          360,
+          37,
+          741,
+          603
+        ],
+        [
+          360,
+          37,
+          745,
+          604
+        ],
+        [
+          360,
+          37,
+          748,
+          604
+        ],
+        [
+          360,
+          37,
+          751,
+          604
+        ],
+        [
+          360,
+          38,
+          752,
+          603
+        ],
+        [
+          360,
+          40,
+          753,
+          604
+        ],
+        [
+          360,
+          41,
+          753,
+          604
+        ],
+        [
+          360,
+          41,
+          751,
+          604
         ]
       ],
-      "source": "complete original drawings; no reconstructed limbs",
+      "source": "Approved Makima drawing + shared cat foot_path/body_transform + PixelFX skeleton",
       "headCenter": [
         19.779247572815535,
         4.834114077669902
       ],
       "headWidth": 7.073058252427185,
       "master": "Makima/Modes/01-walk.png",
-      "originalKeyframes": 8
+      "originalKeyframes": 8,
+      "pixelfx": "Makima/PixelFX-Walk/manifest.json",
+      "headRegistration": "Original identity retained; existing transitions preserved for comparison"
     },
     "Makima/Modes/02-brisk": {
       "frames": 8,
@@ -22525,22 +23055,22 @@
     "Cat/walk/frame-96@2x.png": "04b4999db4b1fcf722ee2bc3863c96fd44322c1379a2379dd97e655c16c00229",
     "Makima/Modes/00-idle/frame-01.png": "9638bec43ff209c0cb0a4c70a3e762390b8bc9c68f71351adf61888d3c9c265f",
     "Makima/Modes/00-idle/frame-01@2x.png": "2947695a1cf37476587f96dbdea032999a46986c8be1ff965ad3a9c8ad5d851b",
-    "Makima/Modes/01-walk/frame-01.png": "27788bf4588b146e86dc3023aceac9a45e00212707df6729fff63e24d50de165",
-    "Makima/Modes/01-walk/frame-01@2x.png": "18f625251ce552bf6ea8777321585dd6ed89e1136c53347f6815b2eb3c68bd51",
-    "Makima/Modes/01-walk/frame-02.png": "c387613ccab16abfd28f85504fe110b47f150b192f0eb307870ee23fc7b164d1",
-    "Makima/Modes/01-walk/frame-02@2x.png": "57dd23488a579da56a1887e3f0f4068fbf070d3eb161a9295b11c721d6c50a2a",
-    "Makima/Modes/01-walk/frame-03.png": "871877b2da1608a29ab142107cbabb4ae1a273b4b4c4c485cd20e4449ac3bfe3",
-    "Makima/Modes/01-walk/frame-03@2x.png": "39ab111f5e7751f1acb542ee9b838773ca6bd3557d250a2c129d16fe126b9ca0",
-    "Makima/Modes/01-walk/frame-04.png": "1799063eece6abc339f8df92aa9455bf2426e438abc066e3edf042a18a430f69",
-    "Makima/Modes/01-walk/frame-04@2x.png": "13877fdf0090e40830ff29b8e2fbea5310c4f85807888f87c815c5a792a5046b",
-    "Makima/Modes/01-walk/frame-05.png": "7ad592ad862db26c0d1a5b87b8dd1dee30c49967c827da5266246ece187eb37a",
-    "Makima/Modes/01-walk/frame-05@2x.png": "b9dcc0de979b09371be08cb5f66701e65b3335a61ddab5bb29745d0f4017b48a",
-    "Makima/Modes/01-walk/frame-06.png": "5630bd6bd9b4f63999e9cc0f07621f18c8fc574290e1c53a753fc610bd613c67",
-    "Makima/Modes/01-walk/frame-06@2x.png": "f41e383b232193b690270680798f453bce1d9bc9e44a1b41e847a97dcb15e743",
-    "Makima/Modes/01-walk/frame-07.png": "43d7042f7e5b7196f30e74d025c87b30cc7aea390214c2bbdd4c61024e1ba32b",
-    "Makima/Modes/01-walk/frame-07@2x.png": "783ef0e7533d29fd7d0046346374fdc9464b3b2c55b9cb297cc51b2b1c3c8925",
-    "Makima/Modes/01-walk/frame-08.png": "09839628e0fa8168feaf8b4f357b30258c7dd2806a2a0cf09534df14904ecdb8",
-    "Makima/Modes/01-walk/frame-08@2x.png": "6202c76d52412cf6394e21b4c7d80494386d14095bed1578151cc1107a55a189",
+    "Makima/Modes/01-walk/frame-01.png": "9d6ddf3398519970274ef472434fe9d2c63140da30acb9a18edd2a466146870e",
+    "Makima/Modes/01-walk/frame-01@2x.png": "958de75bd9cb62458e6c37655b70788b1c7a5d78cb4ecae9d7c83c1654666904",
+    "Makima/Modes/01-walk/frame-02.png": "671aa175689725c1613f71a93c63f52144513cb0edf75eb62ef969c95b02e317",
+    "Makima/Modes/01-walk/frame-02@2x.png": "852394b6f55f2c25fc85a9fac2cc93e37309d20fa4609f5f8b3ed8cba7bd16c1",
+    "Makima/Modes/01-walk/frame-03.png": "7ed22be77f33df1439b227f8c89a4154b8be4011f87083596bc7ea2cf9a803b4",
+    "Makima/Modes/01-walk/frame-03@2x.png": "eb871d1f7fb7be0bd24d4c071524b8ee248c64f4f436a4818637044b517b7d5a",
+    "Makima/Modes/01-walk/frame-04.png": "9f782e7ad9372b6bd500ce2ae2b1daa33ca143814ba9077ee41204dbcede7279",
+    "Makima/Modes/01-walk/frame-04@2x.png": "84a0e7f4d21a9e0147aa619fdbba95a80a7521f1b25106163f949d7f3d5616eb",
+    "Makima/Modes/01-walk/frame-05.png": "9a3a6aca61556eaf152ab697cc0b19d217dc7535c6fd6ef387c0a2be618857f6",
+    "Makima/Modes/01-walk/frame-05@2x.png": "336812892dc8c03025fafeb28eab8eeffc00160b2245e29bb8a1501833981677",
+    "Makima/Modes/01-walk/frame-06.png": "75dfc836c8376fb039f5c5e1e97fbcf3bea9b6469f2fbc103db06321ea1fbcd0",
+    "Makima/Modes/01-walk/frame-06@2x.png": "e9fbf8af19f7d6891ad0583ea439a9c68cfe6679f47236280bc05668f4ac0c17",
+    "Makima/Modes/01-walk/frame-07.png": "6d63ae32a40e31d85551dfeda3099e66cf12482c660187d48fcfdc10de15f091",
+    "Makima/Modes/01-walk/frame-07@2x.png": "414d0c64b6239722e8299d7fa6ad1e275826b2c70de6359906f91327f0fc3077",
+    "Makima/Modes/01-walk/frame-08.png": "e867b53a16635f0e707f41537c1886f7da346e136688b2c90458b3691504bdac",
+    "Makima/Modes/01-walk/frame-08@2x.png": "3bcb7c0d530c76367b1ca3dd6cc7409cb2373a6b10d36855512939fe5c94e35e",
     "Makima/Modes/02-brisk/frame-01.png": "780369d95c4e474c00c22dc44c6c7d037184beca8529454f36fb3d49e21aefc8",
     "Makima/Modes/02-brisk/frame-01@2x.png": "1b45aa74f29b3401d67c5d9f44d9a9ec8f2f9b5c63153578b019935b5434aefe",
     "Makima/Modes/02-brisk/frame-02.png": "e817e3e9be5d2d5bb12b47bb707e060fd61b9eda2fd2f2f8628f4a1043f920bb",
@@ -23028,6 +23558,182 @@
     "Makima/Transitions/08-roadster_09-jetpack/frame-03.png": "bdbbe59439a23378161c36e4647a438033b20f4e6c533cab79393808d9e370a4",
     "Makima/Transitions/08-roadster_09-jetpack/frame-03@2x.png": "017eba04cae527c8d224e0d6cf3b01b12fb75317aabd5876d2c0399aad241f4c",
     "Makima/Transitions/08-roadster_09-jetpack/frame-04.png": "7ede17458b16c8784fb4a3f51d068666d444277a74da50eb7d577b2cc010410d",
-    "Makima/Transitions/08-roadster_09-jetpack/frame-04@2x.png": "cdf8db3039c7b6e45ded64307246469804ebfd55546c3978e0aab1bcfc089dcb"
+    "Makima/Transitions/08-roadster_09-jetpack/frame-04@2x.png": "cdf8db3039c7b6e45ded64307246469804ebfd55546c3978e0aab1bcfc089dcb",
+    "Makima/Modes/01-walk/frame-09.png": "00bc7165a928cba3259c96f131cc81dbeb1455dd58e17071293a1fcba872893b",
+    "Makima/Modes/01-walk/frame-09@2x.png": "2bf6ede28a1eadf096b24e3125c2c1caa46cc9873bb919dfd37d61bf616f3bb3",
+    "Makima/Modes/01-walk/frame-10.png": "b790164aa08b55f82ae31aab5306c8bf05c344c06253525b5edf9241d664759c",
+    "Makima/Modes/01-walk/frame-10@2x.png": "e63b5433d3e1825ec969c658907ed192724dbdf937db9d4de66cbb189bf10884",
+    "Makima/Modes/01-walk/frame-11.png": "46308f75e03da5e8e1558ba99b462b023c1f9812d7415e6b787c8af0b3f02792",
+    "Makima/Modes/01-walk/frame-11@2x.png": "4d01a52a0a4a84981d3f889f6c47396f09d2353ba4430c00acffbdcb30c69816",
+    "Makima/Modes/01-walk/frame-12.png": "18f3493ee522e73752411031f4e8d1cf6576bbf24bfeb5b13ef4c9068fe7957d",
+    "Makima/Modes/01-walk/frame-12@2x.png": "e3b66743f46c01890acad51e4b2bbf803e2bf6ea8751886df26dcd07ab78c442",
+    "Makima/Modes/01-walk/frame-13.png": "e61c6db35f5607fd5b63fd98c0e153b9ca3f2261b5e97f18458b7f15c36cd534",
+    "Makima/Modes/01-walk/frame-13@2x.png": "72796d464afddceace567a2c3da73443bb1f84e326d1ee4e386da635bd2d501a",
+    "Makima/Modes/01-walk/frame-14.png": "2194f9c3a5550b02244c233bf03422cd9573d553813b7d9057d4dc1e82dd4092",
+    "Makima/Modes/01-walk/frame-14@2x.png": "d6f7d16d4e38c207068aee5eefc0a58985b836fa9d7a7edee8d38c5e0ee780c6",
+    "Makima/Modes/01-walk/frame-15.png": "c4a4f0c42b4cbf7bcb84dd9d6cfa89a71fd3d2eb14d8e2ca191a0090c0cc4ce1",
+    "Makima/Modes/01-walk/frame-15@2x.png": "111ad5a347225c61ecbee432efb2cea4b3cb143be37fd60af1178824efc5bca9",
+    "Makima/Modes/01-walk/frame-16.png": "6658c98fcb305bbc5be8c9e4cf9720897dad845c51ed5ec696c0832ad56bfa73",
+    "Makima/Modes/01-walk/frame-16@2x.png": "0eb87da8ec0a680f57ab8a561056a8db789e329a6a553b51d9712847ded999be",
+    "Makima/Modes/01-walk/frame-17.png": "422760108899e3dd27fd125f827857f345424bebf1db13a630441e87626583a6",
+    "Makima/Modes/01-walk/frame-17@2x.png": "ef4dcfceee555bad0b8f169845ecba3a4248c32f88a27d74f3f77112cc3554af",
+    "Makima/Modes/01-walk/frame-18.png": "69e3f117401c002e459035c3d4d1d71168d498d39aab01705b3d8065fb1ea4cd",
+    "Makima/Modes/01-walk/frame-18@2x.png": "6beb8c125629deccb5e3019c38699e147ae3a81eeb053f9a685854c35b67089b",
+    "Makima/Modes/01-walk/frame-19.png": "7e16ff23362bf2ffaf44ba2392ed79433fd5379b2fa6e34a1ca434965009efa4",
+    "Makima/Modes/01-walk/frame-19@2x.png": "3b8984ff3d6ff7978df1d9cca01859c4ec9d04219b641ede29aa14e2b9d87ce3",
+    "Makima/Modes/01-walk/frame-20.png": "a19ca74a14799f602c5a49576d41dd7116b92d46c394da7e1f5adac2a340a260",
+    "Makima/Modes/01-walk/frame-20@2x.png": "d038b4dec4d187a1964cebe91cef8612de451102737dd8f48c69e57cde8bd5a9",
+    "Makima/Modes/01-walk/frame-21.png": "91557110c2c5e5d3af3c18527aee9b4043add3a08093ecad988ad4de49e00e42",
+    "Makima/Modes/01-walk/frame-21@2x.png": "4f62515ae85f2f6a0056fba31ec7307b2cff90e8705e733a94abb2cfd61003e4",
+    "Makima/Modes/01-walk/frame-22.png": "68389875205130eca357f4b320ec8d28ec10f8ef9d219903d1f1afce2752133e",
+    "Makima/Modes/01-walk/frame-22@2x.png": "cdb442af1d479720950190ed13ba8a105c4b70fdde0b4b6e9c43389a64b17cd1",
+    "Makima/Modes/01-walk/frame-23.png": "f1eb8a58793e80e478b9aa1f914c14cd39f61654b25a0149249b464d648e4ec4",
+    "Makima/Modes/01-walk/frame-23@2x.png": "81906d8ce0d1b5551cd48ad4783482d40385a28124025c9ecc0a31c39de1e43f",
+    "Makima/Modes/01-walk/frame-24.png": "3e35f3f09be508ca80215962bb5ed7b641163a129a8422fb27f814baf0d7f85b",
+    "Makima/Modes/01-walk/frame-24@2x.png": "fed6c97370bb9c5896063e4421a69f492d215810b6c9858957d74aedf0d1bdfa",
+    "Makima/Modes/01-walk/frame-25.png": "6ec4dbb16422f2a694ae2b356a24263364b2eb1bfe54399c1bf9b64c1fb607ae",
+    "Makima/Modes/01-walk/frame-25@2x.png": "5a24b998e2a5ccb530c12385f84177c89e76e7c535717aecfeaae14049a3b4fe",
+    "Makima/Modes/01-walk/frame-26.png": "549701d9ad7801a06ad4780a18ccec21320412be8216432ab14e7d9895f3a5f5",
+    "Makima/Modes/01-walk/frame-26@2x.png": "bf9748819bda026b9dd0fdd6a8cdbf37f3c44ee78628d1e13ba21001cf370590",
+    "Makima/Modes/01-walk/frame-27.png": "fa5e1bb32e6effb3398aac54f0378a7684f635b9d41688d27f93540e9b545291",
+    "Makima/Modes/01-walk/frame-27@2x.png": "1ce8a37a4f6f5b1fc92fb10519a0dac0a77fe8187ee7dd9334973cc7e8ad87d8",
+    "Makima/Modes/01-walk/frame-28.png": "63d671c975aaf1c6222c63a66c943c3d28b0b61860b341ed5fcc9d77320d3ea6",
+    "Makima/Modes/01-walk/frame-28@2x.png": "c08666f1bf5e15185ced6723751020b9e214a35dc3a4a2b040c85b77507fa935",
+    "Makima/Modes/01-walk/frame-29.png": "bb6851f3625b3fd6d94f383910c50d3374921003dfcf9dc8860fdf9ced36a1fd",
+    "Makima/Modes/01-walk/frame-29@2x.png": "c4e91f38248390d4ab13732bb19c24e5ae9d458b10f3ec39c1806c78709a184f",
+    "Makima/Modes/01-walk/frame-30.png": "a9f66135e47e7ca1a231822a4ca04e7bef9699b215f9f06de0666bf38a481fa2",
+    "Makima/Modes/01-walk/frame-30@2x.png": "6b2f81ab6eed20fcb36c22aa07603243217b28ad6752b6a429c04039eb080f5f",
+    "Makima/Modes/01-walk/frame-31.png": "9e72023801217e0f637e3043f264f326d94e98b8eb9f980df5d021a18b8511e8",
+    "Makima/Modes/01-walk/frame-31@2x.png": "c5acdd68ab0daee4be0b14f5fb1b03e2d4dc2f68f153299b2d05ea691a9745aa",
+    "Makima/Modes/01-walk/frame-32.png": "8bc6dbbf2fe76b5d72b622266fea6a5a6400a2204ee1c49e326fa03264b9c741",
+    "Makima/Modes/01-walk/frame-32@2x.png": "639e757510758e47877e8299ec268486f22a7c7d4538e26ff7a6d79912f71212",
+    "Makima/Modes/01-walk/frame-33.png": "c8c6a9686d58c5ede8a35d6acea5454e9da087792f2568c88aa22b9160c78ed9",
+    "Makima/Modes/01-walk/frame-33@2x.png": "03c19e7363004c1b2bcc681d6f304c5930d15ec3ce0b26ba452d6055fbe5951d",
+    "Makima/Modes/01-walk/frame-34.png": "6bbdbcdc2cabcff082cf757f8141b56c741ef73aa44c91352ad664675ba849c9",
+    "Makima/Modes/01-walk/frame-34@2x.png": "2de2ae4b885a9f907ea95d7e3b2c9a84cc65d641e8f29eeaef2bfbd6e499da3c",
+    "Makima/Modes/01-walk/frame-35.png": "ea84a8989154343dad5c826a1ca291045be0b06639d1f620adc4316a2f26cd34",
+    "Makima/Modes/01-walk/frame-35@2x.png": "e717ee4e2c79f9f9e301fc6b1999304ff6e2021f4fbe0349baf4cfb91c76b6cd",
+    "Makima/Modes/01-walk/frame-36.png": "aca4fe5819062b73c2029a2385082f6fb806e12d2e1f1d48a3d8fcf55b907d18",
+    "Makima/Modes/01-walk/frame-36@2x.png": "ecfac60b7d30cbc53dad8381fc9210da8ccfbf338ff3a606e36fd8c22a3b1821",
+    "Makima/Modes/01-walk/frame-37.png": "64cf51a15e6cf0cc79758f3e09a656e1e9b04b40a9942139eeed46cc3371254b",
+    "Makima/Modes/01-walk/frame-37@2x.png": "0d407f67b695c969bb9aa67bc86514300130e67136d877da1b20760b9679e3f7",
+    "Makima/Modes/01-walk/frame-38.png": "8d7ae06fd5d6995d47494419ae36da045c584b6a53c308e9e30e5e2514ce3d29",
+    "Makima/Modes/01-walk/frame-38@2x.png": "57b385538118fcbac64c4cc215887573d2c2e5e3bd9c43d79d3d7795a58f4e34",
+    "Makima/Modes/01-walk/frame-39.png": "12eae0845cabd1c82530ae2eaaa167432c1e77f659ce92f57731021c1c04b423",
+    "Makima/Modes/01-walk/frame-39@2x.png": "98aecf9ccacc6546f4058ddf9cd599b4e72e07244bee91bdb5c414e490ddee01",
+    "Makima/Modes/01-walk/frame-40.png": "157cd9a1a8dfabc49c4cc7a7140106a610633dae08724da4e122e0d353f67a1a",
+    "Makima/Modes/01-walk/frame-40@2x.png": "d324efbfe683eae31296bbb53d38d34e7a9fa91ec59c1bacfb9ef25b6a1ff64e",
+    "Makima/Modes/01-walk/frame-41.png": "668085aa2628638f4f88f7f6191870507772f3d362ab9f30010c177b040899e5",
+    "Makima/Modes/01-walk/frame-41@2x.png": "e2025e1260e1dde4256e3f412562a93ed1d48c26b41632af4be6e3f557e81f00",
+    "Makima/Modes/01-walk/frame-42.png": "a94625eb9fa9f70ac620bf7678af717b9dadc62a2095c00b5c7f6ed49312a2a8",
+    "Makima/Modes/01-walk/frame-42@2x.png": "118fc7a27a4508cd3d99d52336cd5bf9b3f74fbc108b6c92b3cbd1f93bdce803",
+    "Makima/Modes/01-walk/frame-43.png": "29e2335ba74f957759f269bf7c13cd634ffffbbcfcd9f84fdca990b1496dbf35",
+    "Makima/Modes/01-walk/frame-43@2x.png": "e0b459ce1bcb6e466d9eda47abdef972b0d8a53cb0cb756a57256cb52caa73c5",
+    "Makima/Modes/01-walk/frame-44.png": "3a361fdd0760e3cc45a386b7943f4de6b347e239365171a8fceb4973e0b37b80",
+    "Makima/Modes/01-walk/frame-44@2x.png": "04014befd9f8cce306a8cd8d23a2aa0584013b640cd501d070d9994e0fa66987",
+    "Makima/Modes/01-walk/frame-45.png": "475b72beeb57e0016ae89caefc2386a5adf3142d18c6d1c67ed0902c3e0b8fd2",
+    "Makima/Modes/01-walk/frame-45@2x.png": "9202f40bb7f0f464280974fa8b123908d4a070d800cb514015498f2aad20e60b",
+    "Makima/Modes/01-walk/frame-46.png": "724d4b84039f27ec5ba4dd19270b7dfd4d72645eef36a95dcf4c61d4fabe195f",
+    "Makima/Modes/01-walk/frame-46@2x.png": "d4d83ed11a4a96f7b2c3388e3ee9aab70093a4aab754150bbf5f12ad16d8bc53",
+    "Makima/Modes/01-walk/frame-47.png": "3dcf20f44f8a506a545c0c42428447bf5d171964954098d7850448c0c8a052d8",
+    "Makima/Modes/01-walk/frame-47@2x.png": "3bed7a209ff3eb2a7be9bf5c93a3a4ff3a1e2328c1e9686ff64a359cf2c4185d",
+    "Makima/Modes/01-walk/frame-48.png": "902804796009ee302bd357d5da4da9ded8a16e61a686998bd3cbbd38bd283bc9",
+    "Makima/Modes/01-walk/frame-48@2x.png": "b5529d985a0bd50433e65aa5ae313192456021455791efcf9ab1faf9c714b50f",
+    "Makima/Modes/01-walk/frame-49.png": "6bce6f283e9ab1cbf68ac9c948c06818be689e4a9d3eef2cd08dbb02b7392965",
+    "Makima/Modes/01-walk/frame-49@2x.png": "8e38dfd08242e81456a95ce445a3ccc1fd67a1bc6efe055735b37599e7c44039",
+    "Makima/Modes/01-walk/frame-50.png": "a07956c00c4a3a57ff7d42ef02539cd25ea6b931d31e70d414cd94bc2cd0bca2",
+    "Makima/Modes/01-walk/frame-50@2x.png": "bc8ec75dd0d264e103de0849ed50f2c7e99b156b721484f2f1297e6f1282713f",
+    "Makima/Modes/01-walk/frame-51.png": "58d2c5819cdd9637cc1cc883bfd05c11dfa079da18bbab568d36d63120ecf884",
+    "Makima/Modes/01-walk/frame-51@2x.png": "2835eef7fcf2408ede948211d04efbb355e9e987569abd74901837c02ef1e41c",
+    "Makima/Modes/01-walk/frame-52.png": "e1997e51d0f49e0d1160a2621a366e19dca585367ee1265ba3dc3dd11c414e0e",
+    "Makima/Modes/01-walk/frame-52@2x.png": "79fea836aad02b7fd45cd0df726a6d410a9ecf3e55a76f9a9802a7cd90ea5ebc",
+    "Makima/Modes/01-walk/frame-53.png": "0e3c4e008e4ba74c165b9fe2c6ff236a81d41768a3687d248f0e17f4bb404ce1",
+    "Makima/Modes/01-walk/frame-53@2x.png": "a445f138f1868fb6e5d9f77c6e8da8a7ebe0112920dd7c92df2cf52e0da65d8e",
+    "Makima/Modes/01-walk/frame-54.png": "e69a50a037c5dc1485acd2d5d74522e830cbd6d94cdcba16beb3548cb5b39271",
+    "Makima/Modes/01-walk/frame-54@2x.png": "d5920a0184eab42c9e7d71f87565e79ca02a61f97f2a7ffa01aab369bcfce95e",
+    "Makima/Modes/01-walk/frame-55.png": "acb1d60d258800052936bf885734da314448d91397479d29dd527ca5c80273ab",
+    "Makima/Modes/01-walk/frame-55@2x.png": "da6e58caf1c12648e422d7b388725aaffc0e23d9b228a0449f4ef1e4372016e3",
+    "Makima/Modes/01-walk/frame-56.png": "fe95a1f844e439016cc78435cd05ae81bf9de60c21c594b44e31ff724e12c685",
+    "Makima/Modes/01-walk/frame-56@2x.png": "f363087be3cf9bdbcda6a3b05a22a1625728f62483faa1aeb8889807a7d0fd0a",
+    "Makima/Modes/01-walk/frame-57.png": "5e67a68152a2393bd5abbe851de812ed887a32e7747e1ce88804e980331c59d2",
+    "Makima/Modes/01-walk/frame-57@2x.png": "e37ab275f8c1a7a3bbed0d2a775e0545bd12030efffcf2607b65f0d022da3603",
+    "Makima/Modes/01-walk/frame-58.png": "8954b8370573bc2c7671a0136bf248be9b22facc677570109f605c9c0e73a333",
+    "Makima/Modes/01-walk/frame-58@2x.png": "58e1c68da3dc7d9a10c788ae3cba738cb440aa3cc956053701b581688b830b7b",
+    "Makima/Modes/01-walk/frame-59.png": "badd2a9bbb68e784b931bf650938b54a7e174fc013e9eb7b44eb7e9fe8f89f3c",
+    "Makima/Modes/01-walk/frame-59@2x.png": "6658af4809f85a9e3193b9af95abf456e09c367488ec5421d5b23035813f7640",
+    "Makima/Modes/01-walk/frame-60.png": "829d8d2a41c865edb90c957b2ae0603470569903ec11665c007106453ca75f05",
+    "Makima/Modes/01-walk/frame-60@2x.png": "e5a7efa319b8b0be0f7c4c921da1cb195f4f043e6ffc649538d5b2c663535766",
+    "Makima/Modes/01-walk/frame-61.png": "8fb52a599ffe3b119aeb16ae3f0d457e3b23d63be51b679c83f772db92b9da7e",
+    "Makima/Modes/01-walk/frame-61@2x.png": "fbb4cc14d02ba1325c9e46ce9a0af27a8329bb5ca5c4d1917a8b17389389e69d",
+    "Makima/Modes/01-walk/frame-62.png": "ef32f7aa5ee02717060918b024eedb4114444f8b94f243703c76c77d9bdd7ec4",
+    "Makima/Modes/01-walk/frame-62@2x.png": "38190204ecd4fbb82d17ccc931ca213f39628a8080fe2897f96edce46f80f0d7",
+    "Makima/Modes/01-walk/frame-63.png": "7e296d3ff8e12a0ca8edf050db3d3fd290f85372d9396ce79153d6837ad58344",
+    "Makima/Modes/01-walk/frame-63@2x.png": "0b104c0258ab53d7bcc31985ddc6fb0a37d52b0cc33f88d3964efa56adbf48b9",
+    "Makima/Modes/01-walk/frame-64.png": "242c5a27358034089ec83f432ebf64247f5437b0880ce104348b23d5b2756e16",
+    "Makima/Modes/01-walk/frame-64@2x.png": "8d3ff8f0a589d73e48df187d13bc5d3275749ed01dc02c6bd1a072906ba2f998",
+    "Makima/Modes/01-walk/frame-65.png": "f912ed44abed0e271274c818918cb9af5589168c4fb6123e38255df60126ee4c",
+    "Makima/Modes/01-walk/frame-65@2x.png": "78fe5340519087ef851be9661b6ca6f5720501836b89caa37b5851099e4f10e0",
+    "Makima/Modes/01-walk/frame-66.png": "144763ca1ff7369cbd47185d90e5403bac928e2da9ffa3c2f6bb8f25353cad9e",
+    "Makima/Modes/01-walk/frame-66@2x.png": "c8be35c7a5317b34f0eab8b82f268cea3d8cea04c12184c2eb2b19ed97cd1b28",
+    "Makima/Modes/01-walk/frame-67.png": "bbd47bbddbc73ebeb9e00201b554ae531f47dbdb490bd3e9003b38c9381bc031",
+    "Makima/Modes/01-walk/frame-67@2x.png": "6df26f98e4a3e31954441daeb3fcc4606a60cc7b7e84a7107a798b4fe95f41e6",
+    "Makima/Modes/01-walk/frame-68.png": "eaf2d7253e37d0e2e57d2306907fe2dbedad2bef71248cccca678fba361a80df",
+    "Makima/Modes/01-walk/frame-68@2x.png": "0eae10a7c54e391af19105922e011210b2ad079ebc9320fa07a0c36fe0f45ac5",
+    "Makima/Modes/01-walk/frame-69.png": "301fadfe5d733f0dd2a43aee71403a9f0e12e0c1badc6ce116dae1a24ef1ba83",
+    "Makima/Modes/01-walk/frame-69@2x.png": "4d426bc84e21396cfbc8aed35a774a0a00c21f463b104bc104a3316cf344c11b",
+    "Makima/Modes/01-walk/frame-70.png": "bd496ea832249551c9ec798ee9b8e05894c84e54272cada0e8a9a26885a8ee9c",
+    "Makima/Modes/01-walk/frame-70@2x.png": "42ada8c8739552db3bccc9583688780d6210e1554508f40d2b67cc3367e9bd5e",
+    "Makima/Modes/01-walk/frame-71.png": "4d9badfd65d1c9811567b23026d27852321e3636b8ef7712a8460a13a629c353",
+    "Makima/Modes/01-walk/frame-71@2x.png": "115ecdfc05facf7811ca3a289285cf061d30028458c4d3d82a43cdc33043a5dd",
+    "Makima/Modes/01-walk/frame-72.png": "bb11e3dbc9208582e4cccbcd128584580538f42a1e9b897865a7a9d4c1e33219",
+    "Makima/Modes/01-walk/frame-72@2x.png": "bdbd751d94289c8b23f8ffb6e85e98762f9051ce4bf4c2d3f4a5aea62b7bc950",
+    "Makima/Modes/01-walk/frame-73.png": "ad4906d3619aa11f0e53618e7858e021bf98668474f9c5e7b771a96499adb0ef",
+    "Makima/Modes/01-walk/frame-73@2x.png": "26a7932df0dd5afe3329bbc1c341a9554d7f628b4099cf931479ec2761f200a0",
+    "Makima/Modes/01-walk/frame-74.png": "65a7e100716d3d13dee5982d7245daec38381e855cca4b72ffafcc2fbd7f17b3",
+    "Makima/Modes/01-walk/frame-74@2x.png": "ed7939e82adfee6c21ef2f3808e5186b2f4b956d29dd30479d964c7244a1b5ea",
+    "Makima/Modes/01-walk/frame-75.png": "f8919049216e8d070bd0d8098c4671cb1b3ea139270d749bcdb4cc13a695847a",
+    "Makima/Modes/01-walk/frame-75@2x.png": "9ece0980308dae12144793692a50329e017679614deb44d1ace8e510e425aae5",
+    "Makima/Modes/01-walk/frame-76.png": "28e3a7f93bb6d8c5546bb9e41230cae24054af07c9d257972e99c77308b52fed",
+    "Makima/Modes/01-walk/frame-76@2x.png": "ae3615441227e940f015409a1c4fc81ce27a26881bc8f310cf5fd7ba453042ff",
+    "Makima/Modes/01-walk/frame-77.png": "3876f8d991cb0c6df40c0641e89dc141613ce2ad62933ca944f868b2f9872c51",
+    "Makima/Modes/01-walk/frame-77@2x.png": "8cc01cb8d0feec84aed38eadabd3c1bb21b90a4ab64321d413488ead65ae9285",
+    "Makima/Modes/01-walk/frame-78.png": "d0517121085cb6b8142c3697492bef0bc23698293d1c568590983462894c0b98",
+    "Makima/Modes/01-walk/frame-78@2x.png": "7b5a22626a346f7f35d1d475eb4a68f047445a6acab1a3f5efb966e02689455a",
+    "Makima/Modes/01-walk/frame-79.png": "465f935ad2e62562290e68eca645d5bc551767bece7085125ea95b6a27445d2a",
+    "Makima/Modes/01-walk/frame-79@2x.png": "ddf06260bd87fa27b822ffe628b2a16bb217db19a8410b895d1fda6441bb06ea",
+    "Makima/Modes/01-walk/frame-80.png": "335a5fede61cba637e34e829115177937837bf52e3a4c62efae7d573561ac0fb",
+    "Makima/Modes/01-walk/frame-80@2x.png": "6ec6592a43630247a5b51d657bf668a44eb93c0941a2f5f32dc785fe40f4390f",
+    "Makima/Modes/01-walk/frame-81.png": "a005752e32326749223d06dd96401d521a7a93b5809fc4e190f40d091a30eb9e",
+    "Makima/Modes/01-walk/frame-81@2x.png": "00ce46fe22aae86c68997b08cf84749fafa78871923a6d3148bf4c4d08c1849d",
+    "Makima/Modes/01-walk/frame-82.png": "0eb1562eab5e51bb8df760f0c05ad33bd801d660717b89e25688305976c9bfab",
+    "Makima/Modes/01-walk/frame-82@2x.png": "beca266360c73c927d0d4f94a38eab8c3e6d2176f91a8d6d0ced66a374f27c6c",
+    "Makima/Modes/01-walk/frame-83.png": "4e9fe18db696f2dc12bf80b7f6cc18d2a9dd8be90d2602f3c3a9d2f3e4aeee1c",
+    "Makima/Modes/01-walk/frame-83@2x.png": "326d29abc590b14bcdd5f4699edd2baa0d965806c2ac6f779c3941cc3729f347",
+    "Makima/Modes/01-walk/frame-84.png": "5ba97cafcd242c0db00076dd6541e5dddc510afbd8a601383369a7bae5b2ca53",
+    "Makima/Modes/01-walk/frame-84@2x.png": "72efdb2f71f99b5fd5733aa4ef517fd060236b33d59569c0be7f0c02a5f7f051",
+    "Makima/Modes/01-walk/frame-85.png": "17b66646d8a6b99a03c6b34e4b25d8a281a3c544ec011195ce59bd55746285d4",
+    "Makima/Modes/01-walk/frame-85@2x.png": "283efc35a1a3493e785f0dd9c66542983c902654bf226603e40b486cca674f3d",
+    "Makima/Modes/01-walk/frame-86.png": "e8715b09432d9ec5fd88879ad85e6f914e94a5e7bd9f3eacbcba4bd8dcc2221f",
+    "Makima/Modes/01-walk/frame-86@2x.png": "75bada691dd6197923de78633494c403f01d7ae67ca1e9f6297f73cc577d2477",
+    "Makima/Modes/01-walk/frame-87.png": "db1d0ffcdb1acecfd48495128544cdd3f45ee493c73b4adb909f7681f13049a0",
+    "Makima/Modes/01-walk/frame-87@2x.png": "a38bfce051bc93265340fcece098bf7baf13373399175f58672d7d5b2472e3b9",
+    "Makima/Modes/01-walk/frame-88.png": "0a0d4fe8cc40170e46297f08dd09f3a3d991b4110986e8cbfc81adb04e42d5ce",
+    "Makima/Modes/01-walk/frame-88@2x.png": "6b5c2a9274341176f5f46d27bfad398df23041d8ddcfb30b0bc51cd312a86ef8",
+    "Makima/Modes/01-walk/frame-89.png": "b6152ecb7653458cdca1bbda3483901bcd94591558826bde58a1c535147be744",
+    "Makima/Modes/01-walk/frame-89@2x.png": "3a20093b5ac51e0a848227536b434badc2d7cc67d4d1189675f73cfb1af7e4fb",
+    "Makima/Modes/01-walk/frame-90.png": "f63731cd27ce34ef6d8b0954772c2fe6cd0ffb7edf0a476d298da0934021b80e",
+    "Makima/Modes/01-walk/frame-90@2x.png": "72ce625382dc0656ea926c4af3991b8d5bbe81d683caee49dae7541b2bd3b49f",
+    "Makima/Modes/01-walk/frame-91.png": "a2436e86ecb16da44e53fb8234f9c03ce9432ee8b3746636b2c240cb501d564b",
+    "Makima/Modes/01-walk/frame-91@2x.png": "1b40f6e60b859a3d4096110cdee7a4d232c323a693ddea36d183214bf09e54e6",
+    "Makima/Modes/01-walk/frame-92.png": "1bc5848d039072d1cb3ef95bff47ee69ec01524a6783d90c6b2b2299f98468c4",
+    "Makima/Modes/01-walk/frame-92@2x.png": "3595d6bc6dd75ecc40475b8376c06aeaa02859dd6c5cf850d63517329a8e58d2",
+    "Makima/Modes/01-walk/frame-93.png": "ba0c7d0c47d88114883fdca0037e3789fc3ae9ff12eaedcd90f2083286de51f6",
+    "Makima/Modes/01-walk/frame-93@2x.png": "cbef82cd41053a31d2eb6dcd0814932c0f8f81ef35c7d6b1f222aa505beb38e7",
+    "Makima/Modes/01-walk/frame-94.png": "20d3511b311429827838e5d5bc53b345dfc08003853f4876c3146d9bf3ab05c9",
+    "Makima/Modes/01-walk/frame-94@2x.png": "0869806b82a35368da6abc2700540a88deb04f3684320826e638b7466c442e77",
+    "Makima/Modes/01-walk/frame-95.png": "80777ec4be82a54d369d4f3f0bc36c9aade21ead8aee60fbf36f4770770c2db1",
+    "Makima/Modes/01-walk/frame-95@2x.png": "ec0a67d901cc1922f4e9061dffc970b0f798f3c29b6b65879165eb6ccdef0c49",
+    "Makima/Modes/01-walk/frame-96.png": "90ee8ae1764ca97dca7fc88b0b19905a1a2cc3db1d65bc918de6db24cc3dba14",
+    "Makima/Modes/01-walk/frame-96@2x.png": "181746502e2722cfc34fd2f7def67cd71be718fc7b79566fa58a46669356d75e"
   }
 }

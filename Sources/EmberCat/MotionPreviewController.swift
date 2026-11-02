@@ -1,6 +1,6 @@
 import AppKit
 
-private final class PixelImageView: NSImageView {
+private final class DetailImageView: NSImageView {
     override func draw(_ dirtyRect: NSRect) {
         guard let image, let bitmap = image.representations.compactMap({ $0 as? NSBitmapImageRep })
             .max(by: { $0.pixelsWide < $1.pixelsWide }), let mask = bitmap.cgImage,
@@ -10,8 +10,8 @@ private final class PixelImageView: NSImageView {
             y: (bounds.height-CGFloat(mask.height)*scale)/2,
             width: CGFloat(mask.width)*scale, height: CGFloat(mask.height)*scale)
         context.saveGState()
-        context.interpolationQuality = .none
-        context.setShouldAntialias(false)
+        context.interpolationQuality = .high
+        context.setShouldAntialias(true)
         context.clip(to: rect, mask: mask)
         context.setFillColor(NSColor.labelColor.cgColor)
         context.fill(rect)
@@ -25,7 +25,7 @@ final class MotionPreviewController: NSWindowController {
     private var director = MotionDirector()
     private var style: PetStyle = .makima
     private let actual = NSImageView()
-    private let enlarged = PixelImageView()
+    private let enlarged = DetailImageView()
     private let stateLabel = NSTextField(labelWithString: "待机")
     private let speedLabel = NSTextField(labelWithString: "0.0 tok/s")
     private let subtitle = NSTextField(labelWithString: "")
@@ -44,7 +44,10 @@ final class MotionPreviewController: NSWindowController {
     private let catSpeeds: [Double] = [0, 8, 45, 140]
 
     init(style: PetStyle? = nil) {
-        self.style = style ?? UserDefaults.standard.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat
+        let walkStudy = CommandLine.arguments.contains("--preview-pixelfx-walk")
+            || Bundle.main.object(forInfoDictionaryKey: "EmberCatPixelFXWalkPreview") as? Bool == true
+        self.style = style ?? (walkStudy ? .makima
+            : UserDefaults.standard.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat)
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 800, height: 640),
             styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "EmberCat · 动作预览"
@@ -52,6 +55,13 @@ final class MotionPreviewController: NSWindowController {
         super.init(window: window)
         window.center()
         buildContent()
+        if walkStudy {
+            window.title = "EmberCat · 玛奇玛走路试作"
+            slider.doubleValue = 3
+            director.setSpeed(3)
+            for _ in 0..<360 { director.advance(by: 1.0/60) }
+            render()
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -157,7 +167,7 @@ final class MotionPreviewController: NSWindowController {
         makimaButtons.isHidden = style != .makima
         subtitle.stringValue = style == .cat
             ? "站立、行走、跑动、蜷成球滚动；随 tok/s 平滑加减速。预览使用模拟速度。"
-            : "速度决定出行方式，每个动作保持固定节奏。预览使用模拟速度。"
+            : "走路为 PixelFX 96 帧试作，其余动作保留原画。预览使用模拟速度。"
         hint.stringValue = style == .cat
             ? "蜷起后整圈翻滚；减速时转正、展开落地。菜单栏继续使用真实速度。"
             : "升降档有防振区间、持续确认与最短停留；已开始的过渡会完整播放。"
@@ -225,7 +235,7 @@ final class MotionPreviewController: NSWindowController {
     private func render() {
         let image = SpriteLibrary.shared.image(for: style, director: director)
         actual.image = image
-        enlarged.image = image
+        enlarged.image = SpriteLibrary.shared.previewImage(for: style, director: director)
         actual.contentTintColor = .labelColor
         enlarged.contentTintColor = .labelColor
         speedLabel.stringValue = String(format: "%.1f tok/s", director.rawSpeed)

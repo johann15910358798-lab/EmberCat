@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>玛奇玛 · 走路试作</title>
+<style>
+:root{color-scheme:light;--paper:#f4f3ef;--card:#fff;--ink:#202526;--muted:#687172;--line:#dddeda;--accent:#286458}
+*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.65 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}body.dark{--paper:#171b1c;--card:#22282a;--ink:#f3f5f2;--muted:#abb7b7;--line:#424b4c;--accent:#a0d5bc;color-scheme:dark}
+main{max-width:940px;margin:52px auto;padding:0 26px}small{letter-spacing:.11em;color:var(--accent);font-weight:650}h1{font-size:32px;letter-spacing:-.03em;margin:8px 0}p{color:var(--muted);margin:6px 0 24px}.cards{display:grid;grid-template-columns:1fr 1fr;gap:18px}.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:24px;min-width:0}h2{font-size:19px;margin:0}.tag{font-size:12px;color:var(--muted)}.stage{height:240px;display:flex;align-items:center;justify-content:center}.large{width:288px;height:160px;image-rendering:auto}.actual{height:54px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:center;gap:16px;font-size:12px;color:var(--muted)}.actual canvas{width:36px;height:20px}output{font:12px ui-monospace,SFMono-Regular,monospace;color:var(--muted)}.controls{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:22px}button,select{background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:9px 14px;font:inherit;cursor:pointer}button:first-child{background:var(--accent);color:var(--card);border:0}label{font-size:13px;color:var(--muted)}.scrub{display:flex;gap:16px;align-items:center;margin:22px 0}input{flex:1;accent-color:var(--accent)}.note{font-size:13px;max-width:740px}.status{font-size:12px;color:var(--muted)}@media(max-width:650px){main{margin:25px auto;padding:0 16px}.cards{grid-template-columns:1fr}.stage{height:190px}h1{font-size:27px}}
+</style>
+<main>
+<small>EMBERCAT / ANIMATION STUDY 01</small>
+<h1>玛奇玛 · 走路试作</h1>
+<p>保留原画的脸、刘海、辫子和服装，复用黑猫的连续落脚轨迹与绘制流程。</p>
+<section class="cards">
+<article class="card"><h2 id="referenceTitle">现有黑猫</h2><span class="tag" id="referenceTag">喜欢的样式 · 96 个姿势</span><div class="stage"><canvas id="old" class="large" width="576" height="320" aria-label="对照动画放大预览"></canvas></div><div class="actual"><span>菜单栏 20 pt</span><canvas id="oldActual" width="72" height="40" aria-label="对照实际尺寸"></canvas></div><output id="oldFrame">准备中</output></article>
+<article class="card"><h2>玛奇玛 · 连续走路</h2><span class="tag">96 个连续姿势 · 60 fps</span><div class="stage"><canvas id="trial" class="large" width="576" height="320" aria-label="试作 动画放大预览"></canvas></div><div class="actual"><span>菜单栏 20 pt</span><canvas id="trialActual" width="72" height="40" aria-label="试作 实际尺寸"></canvas></div><output id="trialFrame">准备中</output></article>
+</section>
+<div class="controls"><label>对照 <select id="reference"><option value="cat">现有黑猫</option><option value="original">旧版玛奇玛</option></select></label><button id="play" type="button">暂停</button><label>播放速度 <select id="speed"><option value="1">正常速度</option><option value="0.5">半速</option><option value="0.25">四分之一速度</option></select></label><button id="theme" type="button">深色背景</button><button id="restart" type="button">从第一帧播放</button></div>
+<div class="scrub"><label for="phase">逐帧检查</label><input id="phase" type="range" min="0" max="95" step="1" value="0"><output id="time">0.00 s</output></div>
+<p class="note">放大区直接使用高分辨率绘图，下面显示真实的 20 pt 图片。对照页统一用 1.6 秒一圈；实际应用里的黑猫仍随速度加减速。本次只试做走路，人物形象取自原画；其他动作和过渡沿用旧版。可以切换旧版玛奇玛、深色背景或逐帧查看。</p>
+<div id="status" class="status" role="status">正在载入本地图片…</div>
+</main>
+<script>
+const frames=__FRAMES__;
+const $=id=>document.getElementById(id);
+let phase=0,playing=true,previous=null,speed=1,dark=false,reference='cat',images;
+async function load(url){const image=new Image();image.src=url;await image.decode();return image}
+function draw(id,image){const canvas=$(id),ctx=canvas.getContext('2d');ctx.clearRect(0,0,canvas.width,canvas.height);ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(image,0,0,canvas.width,canvas.height);ctx.globalCompositeOperation='source-in';ctx.fillStyle=dark?'#f3f5f2':'#202526';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.globalCompositeOperation='source-over'}
+function render(){if(!images)return;const count=images[reference].length,a=Math.min(count-1,Math.floor(phase*count)),b=Math.min(95,Math.floor(phase*96));draw('old',images[reference+'Large'][a]);draw('oldActual',images[reference][a]);draw('trial',images.trialLarge[b]);draw('trialActual',images.trial[b]);$('oldFrame').textContent=`帧 ${a+1} / ${count}`;$('trialFrame').textContent=`帧 ${b+1} / 96`;$('phase').value=b;$('time').textContent=(phase*1.6).toFixed(2)+' s'}
+function tick(now){if(previous!==null&&playing)phase=(phase+Math.min(.1,(now-previous)/1000)*speed/1.6)%1;previous=now;render();requestAnimationFrame(tick)}
+$('play').onclick=()=>{playing=!playing;$('play').textContent=playing?'暂停':'播放'};
+$('reference').onchange=e=>{reference=e.target.value;$('referenceTitle').textContent=reference==='cat'?'现有黑猫':'旧版玛奇玛';$('referenceTag').textContent=reference==='cat'?'喜欢的样式 · 96 个姿势':'8 张原画 · 固定周期';render()};
+$('speed').onchange=e=>speed=Number(e.target.value);
+$('phase').oninput=e=>{playing=false;$('play').textContent='播放';phase=Number(e.target.value)/96;render()};
+$('theme').onclick=()=>{dark=!dark;document.body.classList.toggle('dark',dark);$('theme').textContent=dark?'浅色背景':'深色背景';render()};
+$('restart').onclick=()=>{phase=0;playing=true;$('play').textContent='暂停';render()};
+Promise.all(Object.entries(frames).map(async ([key,urls])=>[key,await Promise.all(urls.map(load))])).then(entries=>{images=Object.fromEntries(entries);$('status').textContent='已载入黑猫、旧版玛奇玛与试作 · 可离线打开';requestAnimationFrame(tick)}).catch(error=>{$('status').textContent='图片载入失败：'+error.message});
+</script>
+</html>

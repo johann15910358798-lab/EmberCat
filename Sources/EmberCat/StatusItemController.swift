@@ -118,7 +118,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         }
 
         // Also advances confirmation timers and hand-drawn transition frames.
-        let interval = style == .cat ? 1.0 / 60.0 : 1.0 / 30.0
+        let interval = style == .cat || director.mode == .walk ? 1.0 / 60.0 : 1.0 / 30.0
         guard timer == nil || timerInterval != interval else { return }
         timer?.invalidate()
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in

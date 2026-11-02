@@ -33,7 +33,9 @@ if let index = CommandLine.arguments.firstIndex(of: "--export-cat-preview") {
 }
 
 let app = NSApplication.shared
-if CommandLine.arguments.contains("--preview-motion") || Bundle.main.object(forInfoDictionaryKey: "EmberCatMotionPreview") as? Bool == true {
+if CommandLine.arguments.contains("--preview-motion") || CommandLine.arguments.contains("--preview-pixelfx-walk")
+    || Bundle.main.object(forInfoDictionaryKey: "EmberCatMotionPreview") as? Bool == true
+    || Bundle.main.object(forInfoDictionaryKey: "EmberCatPixelFXWalkPreview") as? Bool == true {
     let delegate = PreviewAppDelegate()
     app.delegate = delegate
     app.setActivationPolicy(.regular)

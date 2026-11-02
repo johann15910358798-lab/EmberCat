@@ -23,7 +23,7 @@ for path in RES.rglob('*.png'):
             assert box[0]>0 and box[2]<image.width,(path,'steady pose touches canvas edge')
         assert all(pixel[:3]==(0,0,0) for pixel in image.get_flattened_data()),path
     report['PNG']+=1
-assert report['PNG']==1164
+assert report['PNG']==1340
 cat_sheets={name:sheet for name,sheet in metadata['sheets'].items() if name.startswith('Cat/')}
 assert {name:sheet['frames'] for name,sheet in cat_sheets.items()}=={
     'Cat/idle':1,'Cat/walk':96,'Cat/run':96,'Cat/roll':96,'Cat/curl':40}
@@ -108,17 +108,32 @@ for suffix in ('','@2x'):
         'exactRunAndBallEndpoints':True,'distinctRollingFrames':96})
 report['curl']=curl_checks
 report['roundBallBounds']=True
-# Protect the restoration contract: every original drawing at BOTH scales is
-# identical to the 0.5.2 original-art release, rather than a new interpretation.
+# The experiment replaces only walk. Its originals remain byte-identical in
+# the reference folder; all other original poses remain in runtime resources.
 original=json.loads((ROOT/'Artwork/Makima/original-frame-sha256.json').read_text())
 import hashlib
+preserved_runtime=0
+preserved_reference=0
 for name,digest in original['frames'].items():
-    assert hashlib.sha256((RES/name).read_bytes()).hexdigest()==digest,(name,'original artwork changed')
+    if name.startswith('Makima/Modes/01-walk/'):
+        path=ROOT/'Artwork/Makima/PixelFX-Walk/original'/Path(name).name
+        preserved_reference+=1
+    else:
+        path=RES/name
+        preserved_runtime+=1
+    assert hashlib.sha256(path.read_bytes()).hexdigest()==digest,(name,'original artwork changed')
 assert len(original['frames'])==146
-report['originalMakimaPNGRestoredExactly']=146
+assert (preserved_runtime,preserved_reference)==(130,16)
+trial=json.loads((ROOT/'Artwork/Makima/PixelFX-Walk/manifest.json').read_text())
+assert trial['frames']==96 and trial['fps']==60 and trial['duration']==1.6
+assert len(trial['render']['sha256'])==192
+for name,digest in trial['render']['sha256'].items():
+    assert hashlib.sha256((RES/'Makima/Modes/01-walk'/name).read_bytes()).hexdigest()==digest,(name,'trial provenance mismatch')
+report['originalMakimaRuntimePNGsUnchanged']=preserved_runtime
+report['originalWalkReferencePNGsUnchanged']=preserved_reference
 report['originalPoseCounts']={name:sheet['frames'] for name,sheet in metadata['sheets'].items()
     if name.startswith('Makima/Modes/')}
-assert sorted(report['originalPoseCounts'].values())==[1]+[8]*9
+assert sorted(report['originalPoseCounts'].values())==[1]+[8]*8+[96]
 registered=0
 for name,sheet in metadata['sheets'].items():
     if '/Transitions/' not in name: continue
@@ -137,5 +152,6 @@ report['registeredTransitionSets']=registered
 if len(sys.argv)>1:
     Path(sys.argv[1]).write_text(json.dumps(report,indent=2)+'\n')
 print(json.dumps({'pass':True,'PNG':report['PNG'],'catLoops':3,'roundBall':True,'curlEndpointsExact':True,
-    'originalMakimaPNGRestoredExactly':146,'catBodyMovementBounded':True,
+    'originalMakimaRuntimePNGsUnchanged':130,'originalWalkReferencePNGsUnchanged':16,
+    'pixelfxWalkFrames':96,'catBodyMovementBounded':True,
     'registeredTransitionSets':registered}))
