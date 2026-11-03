@@ -2,11 +2,13 @@
 
 macOS 菜单栏 Agent 测速宠物。首次默认显示原创胖黑猫。左/右键点击图标打开紧凑菜单，选择「Token 来源」后在同一浮层查看各来源，左上角返回菜单。菜单内可切换玛奇玛，选择会保留到下次启动。
 
+**Token 检测与测速核心来自 [Agent Speed](https://github.com/zoefix/agent-speed)**，使用其 `AgentSpeedCore` 读取本地会话记录并计算输出速率。感谢原项目作者；相关代码遵循 MIT 许可，原始版权与许可声明保留于 [Vendor/AGENT-SPEED-LICENSE](Vendor/AGENT-SPEED-LICENSE)，所用版本见 [上游记录](Vendor/UPSTREAM.md)。EmberCat 在此基础上增加菜单栏宠物、刘海火焰和 Dock 互动。
+
 ## 发布与下载
 
 当前版本为 **0.6.14 / build 30**，发布说明和安装包校验值见 [0.6.14](docs/releases/0.6.14.md)。Git 仓库保存源码、原画及生成资源；安装包通过 GitHub Releases 单独分发，本地 `dist/` 和 `work/` 不进入源码仓库。
 
-0.6.14 尚未内置自动更新组件，Release 安装包需要手动下载安装。应用内自动检查、下载和安装需要另行接入更新组件；私密仓库中的 Release 还需要对应的 GitHub 访问权限。
+0.6.14 尚未内置自动更新组件，Release 安装包需要手动下载安装。应用内自动检查、下载和安装需要另行接入更新组件。
 
 ## 0.6.14 写实流焰、参数滑杆与自定义配色
 
