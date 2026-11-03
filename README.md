@@ -6,7 +6,7 @@ macOS 菜单栏 Agent 测速宠物。首次默认显示原创胖黑猫。左/右
 
 ## 发布与下载
 
-当前版本为 **0.6.14 / build 30**，发布说明和安装包校验值见 [0.6.14](docs/releases/0.6.14.md)。Git 仓库保存源码、原画及生成资源；安装包通过 GitHub Releases 单独分发，本地 `dist/` 和 `work/` 不进入源码仓库。
+当前版本为 **0.6.14 / build 30**。安装包请到 [GitHub Releases](https://github.com/johann15910358798-lab/EmberCat/releases/latest) 下载；发布说明和安装包校验值见 [0.6.14](docs/releases/0.6.14.md)。Git 仓库保存源码、原画及生成资源；本地 `dist/` 和 `work/` 不进入源码仓库。
 
 0.6.14 尚未内置自动更新组件，Release 安装包需要手动下载安装。应用内自动检查、下载和安装需要另行接入更新组件。
 
