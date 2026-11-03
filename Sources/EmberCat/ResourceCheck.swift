@@ -12,6 +12,21 @@ func checkMenuBarResources() -> Bool {
     var menuBarFramesChecked = 0
     var menuBarWidths: [String: CGFloat] = [:]
     var failures: [String] = []
+    let portrait = AppResources.dockIdleCat
+    let portraitRep = portrait?.representations.compactMap { $0 as? NSBitmapImageRep }.first
+    let dockIdleArtworkChecked = portrait?.isValid == true && portrait?.isTemplate == false
+        && portraitRep?.pixelsWide == 256 && portraitRep?.pixelsHigh == 256
+        && portraitRep?.hasAlpha == true
+    if !dockIdleArtworkChecked { failures.append("DockIdleCat: missing or invalid transparent artwork") }
+    let portraitLayers = DockIdleCatArtwork.shared
+    let dockIdleEyeLayersChecked = portraitLayers.isComplete
+        && portraitLayers.eyeMask?.width == 1024 && portraitLayers.eyeMask?.height == 1024
+        && ([portraitLayers.base].compactMap { $0 } + portraitLayers.pupils).allSatisfy { image in
+            !image.isTemplate && image.representations.contains { rep in
+                rep.pixelsWide == 1024 && rep.pixelsHigh == 1024
+            }
+        }
+    if !dockIdleEyeLayersChecked { failures.append("DockIdleCat: missing or invalid gaze layers") }
     var sourceIconsChecked: [String] = []
     var sourceIconFallbacksChecked = 0
     var unreadableSourceIconFallbackChecked = false
@@ -301,6 +316,8 @@ func checkMenuBarResources() -> Bool {
         "catVariableCadenceFrames": differentCatFrames, "catTransitionsRendered": catTransitions.sorted(),
         "menuBarFramesChecked": menuBarFramesChecked, "menuBarWidths": menuBarWidths,
         "sourceIconsChecked": sourceIconsChecked,
+        "dockIdleArtworkChecked": dockIdleArtworkChecked,
+        "dockIdleEyeLayersChecked": dockIdleEyeLayersChecked,
         "sourceIconFallbacksChecked": sourceIconFallbacksChecked,
         "unreadableSourceIconFallbackChecked": unreadableSourceIconFallbackChecked,
         "template": true, "logicalSize": [36,20], "scales": [1,2], "failures": failures]

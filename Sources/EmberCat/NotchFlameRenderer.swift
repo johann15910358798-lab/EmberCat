@@ -4,83 +4,69 @@ import MetalKit
 struct NotchFlameGeometry {
     let notchWidth: CGFloat
     let notchHeight: CGFloat
-    let widthScale: CGFloat
-    let heightScale: CGFloat
-    let padding: CGFloat = 18
-    var tail: CGFloat { 66 * heightScale + 8 }
+    let padding: CGFloat = 30
+    static let maximumFlameDepth: CGFloat = 80
 
-    init(notchWidth: CGFloat, notchHeight: CGFloat, widthScale: CGFloat = 1, heightScale: CGFloat = 1) {
-        self.notchWidth = notchWidth
-        self.notchHeight = notchHeight
-        self.widthScale = widthScale
-        self.heightScale = heightScale
+    var size: CGSize {
+        CGSize(width: notchWidth + padding * 2, height: notchHeight + Self.maximumFlameDepth + 12)
     }
-
-    var size: CGSize { CGSize(width: max(notchWidth, flameWidth) + padding * 2, height: notchHeight + tail) }
-    var flameWidth: CGFloat { notchWidth * widthScale }
-    var notch: CGRect { CGRect(x: (size.width-notchWidth)/2, y: 0, width: notchWidth, height: notchHeight) }
-
-    /// A continuous visual temperature, with useful range at ordinary token rates.
-    static func heat(for speed: Double) -> Float {
-        guard speed.isFinite else { return 0 }
-        return Float(min(1, log1p(max(0, speed) / 10) / log(19)))
-    }
+    var notch: CGRect { CGRect(x: padding, y: 0, width: notchWidth, height: notchHeight) }
+    var cornerRadius: CGFloat { min(notchWidth / 2, notchHeight * 9 / 32) }
 }
 
 private struct FlameUniforms {
     var viewport: SIMD2<Float>
     var notchOrigin: SIMD2<Float>
     var notchSize: SIMD2<Float>
-    var flameSize: SIMD2<Float>
-    var atlas: SIMD4<Float>
+    var pixelScale: Float
     var time: Float
     var heat: Float
     var visibility: Float
-    var reduceMotion: Float
+    var drawsAnchor: Float
+    var cornerRadius: Float
+    var flameColor: SIMD4<Float>
+    var style: SIMD4<Float>
+    var motion: SIMD4<Float>
 }
 
-struct FlameSequence: Decodable {
-    let name: String
-    let license: String
-    let frameWidth: Int
-    let frameHeight: Int
-    let gridColumns: Int
-    let gridRows: Int
-    let frameCount: Int
-    let framesPerSecond: Double
-}
-
-/// The overlay, preview and export sample the same CC0 Houdini-rendered sequence.
+/// One continuous density field, shared by the live overlay and native previews.
 @MainActor
 final class NotchFlameRenderer {
     let device: MTLDevice
-    let sequence: FlameSequence
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
-    private let atlas: MTLTexture
+    private let noise: MTLTexture
 
-    init(resourceDirectory: URL? = nil) throws {
+    init() throws {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
             throw Self.error("Metal is unavailable")
         }
         self.device = device
         self.queue = queue
-        let folder = try resourceDirectory ?? Self.resourceDirectory()
-        sequence = try JSONDecoder().decode(FlameSequence.self,
-            from: Data(contentsOf: folder.appendingPathComponent("manifest.json")))
-        guard sequence.frameCount > 1, sequence.gridColumns > 0, sequence.gridRows > 0,
-              sequence.frameCount <= sequence.gridColumns * sequence.gridRows,
-              sequence.framesPerSecond > 0 else { throw Self.error("Invalid flame sequence metadata") }
-        atlas = try MTKTextureLoader(device: device).newTexture(
-            URL: folder.appendingPathComponent("fire-atlas.png"), options: [
-                .SRGB: false, .origin: MTKTextureLoader.Origin.topLeft,
-                .generateMipmaps: false, .textureUsage: MTLTextureUsage.shaderRead.rawValue
-            ])
-        guard atlas.width == sequence.frameWidth * sequence.gridColumns,
-              atlas.height == sequence.frameHeight * sequence.gridRows else {
-            throw Self.error("Flame atlas dimensions do not match its metadata")
+        let texture = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: .rgba8Unorm, width: 128, height: 128, mipmapped: false)
+        texture.storageMode = .shared
+        texture.usage = .shaderRead
+        guard let noise = device.makeTexture(descriptor: texture) else {
+            throw Self.error("Could not allocate flame noise")
         }
-        let library = try device.makeLibrary(source: Self.shader, options: nil)
+        self.noise = noise
+        var seed: UInt32 = 0x6c3e2d71
+        var bytes = [UInt8](repeating: 0, count: 128 * 128 * 4)
+        for offset in stride(from: 0, to: bytes.count, by: 4) {
+            for channel in 0..<2 {
+                seed ^= seed << 13
+                seed ^= seed >> 17
+                seed ^= seed << 5
+                bytes[offset + channel] = UInt8(seed >> 24)
+            }
+            bytes[offset + 3] = 255
+        }
+        bytes.withUnsafeBytes {
+            noise.replace(region: MTLRegionMake2D(0, 0, 128, 128), mipmapLevel: 0,
+                withBytes: $0.baseAddress!, bytesPerRow: 128 * 4)
+        }
+        let library = try device.makeLibrary(source: NotchFlameShader.source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "flameVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "flameFragment")
@@ -89,8 +75,11 @@ final class NotchFlameRenderer {
     }
 
     func draw(texture: MTLTexture, geometry: NotchFlameGeometry, time: Double,
-              heat: Float, visibility: Float = 1, reduceMotion: Bool = false,
-              drawable: CAMetalDrawable? = nil, wait: Bool = false) throws {
+              heat: Float, visibility: Float = 1, drawsAnchor: Bool = false,
+              color: SIMD3<Float> = NotchFlamePalette.standard.color(for: 180),
+              appearance: NotchFlameAppearance = .standard,
+              reduceMotion: Bool = false, drawable: CAMetalDrawable? = nil,
+              wait: Bool = false) throws {
         guard let command = queue.makeCommandBuffer() else { throw Self.error("No command buffer") }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = texture
@@ -104,14 +93,17 @@ final class NotchFlameRenderer {
             viewport: SIMD2(Float(geometry.size.width), Float(geometry.size.height)),
             notchOrigin: SIMD2(Float(geometry.notch.minX), Float(geometry.notch.minY)),
             notchSize: SIMD2(Float(geometry.notchWidth), Float(geometry.notchHeight)),
-            flameSize: SIMD2(Float(geometry.flameWidth), Float(geometry.heightScale)),
-            atlas: SIMD4(Float(sequence.gridColumns), Float(sequence.gridRows),
-                Float(sequence.frameCount), Float(sequence.framesPerSecond)),
-            time: Float(reduceMotion ? 4.25 : time), heat: heat,
-            visibility: visibility, reduceMotion: reduceMotion ? 1 : 0)
+            pixelScale: Float(texture.width) / Float(geometry.size.width),
+            time: Float(reduceMotion ? 8.73 : time),
+            heat: heat, visibility: visibility, drawsAnchor: drawsAnchor ? 1 : 0,
+            cornerRadius: Float(geometry.cornerRadius),
+            flameColor: SIMD4(color.x, color.y, color.z, 1),
+            style: SIMD4(Float(appearance.brightness), Float(appearance.core),
+                Float(appearance.transparency), Float(appearance.length)),
+            motion: SIMD4(Float(appearance.turbulence), 0, 0, 0))
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlameUniforms>.stride, index: 0)
-        encoder.setFragmentTexture(atlas, index: 0)
+        encoder.setFragmentTexture(noise, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         encoder.endEncoding()
         if let drawable { command.present(drawable) }
@@ -123,26 +115,31 @@ final class NotchFlameRenderer {
     }
 
     func image(geometry: NotchFlameGeometry, time: Double, speed: Double,
-               scale: CGFloat = 2, active: Bool = true, reduceMotion: Bool = false) throws -> CGImage {
+               scale: CGFloat = 2, active: Bool = true, drawsAnchor: Bool = false,
+               palette: NotchFlamePalette = .standard,
+               color: SIMD3<Float>? = nil, appearance: NotchFlameAppearance = .standard,
+               visibility: Float = 1,
+               reduceMotion: Bool = false) throws -> CGImage {
         let width = Int((geometry.size.width * scale).rounded())
         let height = Int((geometry.size.height * scale).rounded())
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
             width: width, height: height, mipmapped: false)
-        descriptor.usage = [.renderTarget]
+        descriptor.usage = .renderTarget
         descriptor.storageMode = .shared
         guard let texture = device.makeTexture(descriptor: descriptor) else {
             throw Self.error("Could not allocate preview texture")
         }
+        let heat = Float(NotchFlameAnimation.heat(for: speed))
         try draw(texture: texture, geometry: geometry, time: time,
-            heat: NotchFlameGeometry.heat(for: speed), visibility: active ? 1 : 0,
-            reduceMotion: reduceMotion, wait: true)
+            heat: heat, visibility: active && heat > 0 ? visibility : 0,
+            drawsAnchor: drawsAnchor, color: color ?? palette.color(for: speed),
+            appearance: appearance, reduceMotion: reduceMotion, wait: true)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         pixels.withUnsafeMutableBytes {
             texture.getBytes($0.baseAddress!, bytesPerRow: width * 4,
                 from: MTLRegionMake2D(0, 0, width, height), mipmapLevel: 0)
         }
-        let data = Data(pixels) as CFData
-        guard let provider = CGDataProvider(data: data),
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData),
               let image = CGImage(width: width, height: height, bitsPerComponent: 8,
                 bitsPerPixel: 32, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
                 bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue)
@@ -156,125 +153,22 @@ final class NotchFlameRenderer {
         NSError(domain: "EmberCat.Flame", code: 1,
             userInfo: [NSLocalizedDescriptionKey: description])
     }
-
-    private static func resourceDirectory() throws -> URL {
-        var roots = [Bundle.main.resourceURL]
-        #if SWIFT_PACKAGE
-        roots.append(Bundle.module.resourceURL)
-        #endif
-        for root in roots.compactMap({ $0 }) {
-            let folder = root.appendingPathComponent("NotchFlame", isDirectory: true)
-            if FileManager.default.fileExists(atPath: folder.appendingPathComponent("manifest.json").path) {
-                return folder
-            }
-        }
-        throw error("Bundled flame sequence is missing")
-    }
-
-    // Premultiplied output is essential: no black rectangle or dark fringe on a light desktop.
-    private static let shader = #"""
-    #include <metal_stdlib>
-    using namespace metal;
-
-    struct Uniforms {
-        float2 viewport;
-        float2 notchOrigin;
-        float2 notchSize;
-        float2 flameSize;
-        float4 atlas;
-        float time;
-        float heat;
-        float visibility;
-        float reduceMotion;
-    };
-    struct Vertex { float4 position [[position]]; float2 uv; };
-
-    vertex Vertex flameVertex(uint id [[vertex_id]]) {
-        float2 p = id == 0 ? float2(-1,-1) : id == 1 ? float2(3,-1) : float2(-1,3);
-        return { float4(p,0,1), float2((p.x+1)*0.5, (1-p.y)*0.5) };
-    }
-
-    float3 thermal(float heat, float3 a, float3 b, float3 c, float3 d, float3 e) {
-        float t=clamp(heat,0.0,1.0)*4.0;
-        if(t<1.0) return mix(a,b,smoothstep(0.0,1.0,t));
-        if(t<2.0) return mix(b,c,smoothstep(0.0,1.0,t-1.0));
-        if(t<3.0) return mix(c,d,smoothstep(0.0,1.0,t-2.0));
-        return mix(d,e,smoothstep(0.0,1.0,t-3.0));
-    }
-
-    float roundedBox(float2 p,float2 center,float2 halfSize,float radius) {
-        float2 q=abs(p-center)-halfSize+radius;
-        return length(max(q,0.0))+min(max(q.x,q.y),0.0)-radius;
-    }
-
-    float3 sequenceFrame(texture2d<float> atlas, float2 uv, float frame, float4 layout) {
-        constexpr sampler linearSampler(coord::normalized,address::clamp_to_edge,filter::linear);
-        float2 size=float2(atlas.get_width(),atlas.get_height());
-        float2 cellSize=size/layout.xy;
-        float2 cell=float2(fmod(frame,layout.x),floor(frame/layout.x));
-        // Half-texel bounds prevent another frame leaking into the flame edge.
-        float2 point=(cell*cellSize+0.5+uv*(cellSize-1.0))/size;
-        return atlas.sample(linearSampler,point).rgb;
-    }
-
-    fragment float4 flameFragment(Vertex in [[stage_in]], constant Uniforms &u [[buffer(0)]],
-                                  texture2d<float> atlas [[texture(0)]]) {
-        float2 p=in.uv*u.viewport;
-        float2 center=u.notchOrigin+u.notchSize*0.5;
-        if(u.visibility<0.001 || roundedBox(p,center,u.notchSize*0.5,8.0)<0.0) return float4(0);
-        float h=clamp(u.heat,0.0,1.0);
-        float x=p.x-center.x;
-        float y=p.y-(u.notchOrigin.y+u.notchSize.y);
-        const float positions[7]={-0.43,-0.29,-0.14,0.02,0.18,0.33,0.44};
-        const float widths[7]={0.20,0.23,0.22,0.25,0.19,0.22,0.18};
-        const float heights[7]={0.70,0.90,0.85,1.0,0.78,0.86,0.62};
-        const float rates[7]={0.83,0.91,0.75,0.87,0.79,0.94,0.81};
-        float3 color=float3(0);
-        float alpha=0.0;
-        for(int i=0;i<7;++i) {
-            float width=u.flameSize.x*widths[i];
-            float height=(22.0+54.0*h)*u.flameSize.y*heights[i];
-            float2 uv=float2((x-u.flameSize.x*positions[i])/width+0.5,
-                1.0-(y+5.0*u.flameSize.y)/height);
-            if(any(uv<0.0) || any(uv>1.0)) continue;
-            if(i==1 || i==4) uv.x=1.0-uv.x;
-            float frame=fmod(u.time*u.atlas.w*rates[i]+float(i)*31.7,u.atlas.z);
-            float3 source=mix(sequenceFrame(atlas,uv,floor(frame),u.atlas),
-                sequenceFrame(atlas,uv,fmod(floor(frame)+1.0,u.atlas.z),u.atlas),fract(frame));
-            float signal=max(source.r,max(source.g,source.b));
-            if(signal<0.002) continue;
-            // Keep the original rendered luminance and internal folds. Only the
-            // temperature palette changes with tok/s; no procedural flame shape.
-            float3 dark=source*float3(0.80,0.25,0.10);
-            float3 amber=source*float3(1.0,0.80,0.70);
-            float3 gold=source*float3(1.0,1.15,1.35);
-            float3 white=mix(source,float3(source.r),float3(0,0.42,0.55));
-            float3 blue=float3(source.b*0.55+source.r*0.30,source.g*0.65+source.r*0.33,source.r);
-            float3 emission=clamp(thermal(h,dark,amber,gold,white,blue),0.0,1.0)*0.95;
-            float a=max(emission.r,max(emission.g,emission.b));
-            color+=(1.0-alpha)*emission;
-            alpha+=(1.0-alpha)*a;
-        }
-        float edge=1.0-smoothstep(u.flameSize.x*0.47,u.flameSize.x*0.55,abs(x));
-        float boundsFade=smoothstep(0.0,4.0,p.x)*smoothstep(0.0,4.0,u.viewport.x-p.x)
-            *smoothstep(0.0,6.0,u.viewport.y-p.y);
-        float opacity=edge*boundsFade*u.visibility;
-        return float4(color*opacity,alpha*opacity);
-    }
-    """#
 }
 
 @MainActor
 final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     var geometry: NotchFlameGeometry
+    var drawsAnchor = false
     var onFadeOut: (() -> Void)?
+    var onRenderFailure: (() -> Void)?
     private let renderer: NotchFlameRenderer
-    private let startTime = ProcessInfo.processInfo.systemUptime
+    private var animation = NotchFlameAnimation()
     private var lastTime = ProcessInfo.processInfo.systemUptime
-    private var heat: Float = 0
-    private var targetHeat: Float = 0
-    private var visibility: Float = 0
-    private var targetVisibility: Float = 0
+    private var accessibilityObserver: NSObjectProtocol?
+    private(set) var palette: NotchFlamePalette = .standard
+    private(set) var flameAppearance: NotchFlameAppearance = .standard
+    private var lastSpeed: Double = 0
+    private var lastActive = true
 
     init(geometry: NotchFlameGeometry, renderer: NotchFlameRenderer? = nil) throws {
         self.geometry = geometry
@@ -282,13 +176,14 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         self.renderer = renderer
         super.init(frame: CGRect(origin: .zero, size: geometry.size), device: renderer.device)
         colorPixelFormat = .bgra8Unorm
-        clearColor = MTLClearColorMake(0,0,0,0)
+        clearColor = MTLClearColorMake(0, 0, 0, 0)
         layer?.isOpaque = false
-        preferredFramesPerSecond = 30
+        preferredFramesPerSecond = 60
         autoResizeDrawable = false
         enableSetNeedsDisplay = false
         isPaused = true
         delegate = self
+        refreshDisplay()
     }
 
     required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
@@ -296,31 +191,71 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
 
     override func setFrameSize(_ newSize: NSSize) {
         super.setFrameSize(newSize)
-        updateDrawableSize()
+        refreshDisplay()
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        updateDrawableSize()
+        refreshDisplay()
     }
 
     override func viewDidChangeBackingProperties() {
         super.viewDidChangeBackingProperties()
-        updateDrawableSize()
+        refreshDisplay()
     }
 
-    private func updateDrawableSize() {
-        let scale = max(2,window?.backingScaleFactor ?? 2)
-        drawableSize = CGSize(width:ceil(bounds.width*scale),height:ceil(bounds.height*scale))
+    func refreshDisplay(maximumFramesPerSecond: Int? = nil) {
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        drawableSize = CGSize(width: ceil(bounds.width * scale), height: ceil(bounds.height * scale))
+        preferredFramesPerSecond = NotchDisplayProfile.frameRate(
+            for: maximumFramesPerSecond ?? window?.screen?.maximumFramesPerSecond ?? 60)
+        // A paused reduced-motion surface still needs one redraw after a resize or display change.
+        if isPaused, !animation.isHidden { draw() }
     }
 
     func setSpeed(_ speed: Double, active: Bool = true) {
-        targetHeat = NotchFlameGeometry.heat(for: speed)
-        targetVisibility = active ? 1 : 0
-        if !active && visibility == 0 { isPaused = true; return }
+        lastSpeed = speed
+        lastActive = active
+        animation.setSpeed(speed, active: active, color: palette.color(for: speed))
+        if accessibilityObserver == nil {
+            accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
+                forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
+                object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.resumeIfNeeded() }
+            }
+        }
+        resumeIfNeeded()
+    }
+
+    func setPalette(_ palette: NotchFlamePalette) {
+        guard palette != self.palette, palette.validationError == nil else { return }
+        self.palette = palette
+        setSpeed(lastSpeed, active: lastActive)
+    }
+
+    func setAppearance(_ appearance: NotchFlameAppearance) {
+        guard appearance != flameAppearance, appearance.validationError == nil else { return }
+        flameAppearance = appearance
+        // Reduced motion still updates an edited material once without starting a loop.
+        if isPaused, !animation.isHidden { draw() }
+    }
+
+    private func resumeIfNeeded() {
+        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        guard animation.needsFrames(reduceMotion: reduced) else { return }
         if isPaused {
             lastTime = ProcessInfo.processInfo.systemUptime
             isPaused = false
+        }
+    }
+
+    func stop() {
+        isPaused = true
+        animation.reset()
+        if let accessibilityObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver)
+            self.accessibilityObserver = nil
         }
     }
 
@@ -328,26 +263,28 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
 
     func draw(in view: MTKView) {
         let now = ProcessInfo.processInfo.systemUptime
-        let delta = min(0.1,max(0,now-lastTime))
-        lastTime = now
-        heat += (targetHeat-heat)*Float(1-exp(-delta/0.48))
-        visibility += (targetVisibility-visibility)*Float(1-exp(-delta/0.12))
-        let settled = targetVisibility == 0 && visibility < 0.004
-        if settled { visibility = 0 }
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        guard let drawable = currentDrawable else { return }
+        animation.advance(by: now - lastTime, reduceMotion: reduced, flow: flameAppearance.flow)
+        lastTime = now
+        guard let drawable = currentDrawable else {
+            if animation.isHidden { isPaused = true; onFadeOut?() }
+            return
+        }
         do {
             try renderer.draw(texture: drawable.texture, geometry: geometry,
-                time: now-startTime, heat: heat, visibility: visibility,
+                time: animation.phase, heat: Float(animation.heat),
+                visibility: Float(animation.visibility), drawsAnchor: drawsAnchor,
+                color: animation.color, appearance: flameAppearance,
                 reduceMotion: reduced, drawable: drawable)
         } catch {
             NSLog("EmberCat flame frame: %@", error.localizedDescription)
+            stop()
+            onRenderFailure?()
+            return
         }
-        if settled {
+        if !animation.needsFrames(reduceMotion: reduced) {
             isPaused = true
-            onFadeOut?()
-        } else if reduced && abs(targetHeat-heat)<0.001 && abs(targetVisibility-visibility)<0.001 {
-            isPaused = true
+            if animation.isHidden { onFadeOut?() }
         }
     }
 }

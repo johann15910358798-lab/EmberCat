@@ -7,6 +7,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let viewModel: SpeedMonitorModel
     private let defaults: UserDefaults
+    private let flameSettings: NotchFlameSettings
+    private let dockSettings: DockOrbitSettings
     private let panelState: StatusPanelState
     private var showsTokenRate: Bool { panelState.showsTokenRate }
     private var style: PetStyle { panelState.style }
@@ -17,7 +19,9 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
     private var displayedFrame: FrameKey?
     private var bag: Set<AnyCancellable> = []
     private var preview: MotionPreviewController?
+    private var flamePreview: NotchFlamePreviewController?
     private var menuPopover: NSPopover?
+    private var pawColorPanel: NSColorPanel?
 
     private struct FrameKey: Equatable {
         let style: PetStyle
@@ -26,12 +30,17 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let index: Int
     }
 
-    init(viewModel: SpeedMonitorModel, defaults: UserDefaults = .standard) {
+    init(viewModel: SpeedMonitorModel, defaults: UserDefaults = .standard,
+         flameSettings: NotchFlameSettings = .shared, dockSettings: DockOrbitSettings = .shared) {
         self.viewModel = viewModel
         self.defaults = defaults
+        self.flameSettings = flameSettings
+        self.dockSettings = dockSettings
         self.panelState = StatusPanelState(
             style: defaults.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat,
-            showsTokenRate: defaults.bool(forKey: "showsTokenRate"))
+            showsTokenRate: defaults.bool(forKey: "showsTokenRate"),
+            showsNotchFlame: flameSettings.isEnabled,
+            showsDockCat: dockSettings.isEnabled)
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -47,6 +56,12 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         bag.removeAll()
         menuPopover?.close()
         menuPopover = nil
+        flamePreview?.close()
+        flamePreview = nil
+        pawColorPanel?.close()
+        pawColorPanel?.setTarget(nil)
+        pawColorPanel?.setAction(nil)
+        pawColorPanel = nil
         NSStatusBar.system.removeStatusItem(statusItem)
     }
 
@@ -146,11 +161,15 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             popover.behavior = .transient
             popover.delegate = self
             let host = NSHostingController(rootView: StatusPanelView(
-                viewModel: viewModel, state: panelState,
+                viewModel: viewModel, state: panelState, dockSettings: dockSettings,
                 onNavigate: { [weak self] in self?.navigate(to: $0) },
                 onSelectStyle: { [weak self] in self?.selectStyle($0) },
                 onSelectDisplay: { [weak self] in self?.selectDisplayMode($0) },
+                onSelectFlame: { [weak self] in self?.selectFlame($0) },
+                onSelectDock: { [weak self] in self?.selectDock($0) },
+                onCustomizePawColor: { [weak self] in self?.showPawColorPicker() },
                 onPreview: { [weak self] in self?.showPreview() },
+                onFlamePreview: { [weak self] in self?.showFlamePreview() },
                 onClose: { [weak self] in self?.menuPopover?.close() },
                 onQuit: { NSApplication.shared.terminate(nil) }))
             // One popover owns both pages. Its native size animation keeps the
@@ -206,6 +225,49 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         menuPopover?.close()
         if preview == nil { preview = MotionPreviewController(style: style) }
         preview?.showWindow(nil)
+    }
+
+    private func selectFlame(_ enabled: Bool) {
+        panelState.showsNotchFlame = enabled
+        flameSettings.isEnabled = enabled
+    }
+
+    private func showFlamePreview() {
+        menuPopover?.close()
+        pawColorPanel?.orderOut(nil)
+        pawColorPanel?.setTarget(nil)
+        pawColorPanel?.setAction(nil)
+        pawColorPanel = nil
+        do {
+            if flamePreview == nil { flamePreview = try NotchFlamePreviewController(settings: flameSettings) }
+            flamePreview?.showWindow(nil)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
+
+    private func selectDock(_ enabled: Bool) {
+        panelState.showsDockCat = enabled
+        dockSettings.isEnabled = enabled
+    }
+
+    private func showPawColorPicker() {
+        menuPopover?.close()
+        flamePreview?.deactivateColorWells()
+        let panel = NSColorPanel.shared
+        panel.title = "脚印荧光色"
+        panel.showsAlpha = false
+        panel.isContinuous = true
+        panel.color = dockSettings.trailColor
+        panel.setTarget(self)
+        panel.setAction(#selector(changePawColor(_:)))
+        pawColorPanel = panel
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
+    }
+
+    @objc private func changePawColor(_ panel: NSColorPanel) {
+        dockSettings.setTrailColor(panel.color)
     }
 
     private func advanceMotion() {

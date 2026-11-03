@@ -17,6 +17,7 @@ fi
 cp -R "$ROOT/Sources/EmberCat/Resources/MenuBarPets" "$APP/Contents/Resources/"
 cp -R "$ROOT/Sources/EmberCat/Resources/PetPreview" "$APP/Contents/Resources/"
 cp -R "$ROOT/Sources/EmberCat/Resources/SourceIcons" "$APP/Contents/Resources/"
+cp -R "$ROOT/Sources/EmberCat/Resources/DockIdleCat" "$APP/Contents/Resources/"
 mkdir -p "$APP/Contents/Resources/Licenses"
 cp "$ROOT/Vendor/AGENT-SPEED-LICENSE" "$APP/Contents/Resources/Licenses/"
 cp "$ROOT/Vendor/CZstd/LICENSE" "$APP/Contents/Resources/Licenses/ZSTD-LICENSE"

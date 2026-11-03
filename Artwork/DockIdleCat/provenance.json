@@ -1,0 +1,30 @@
+{
+  "source": "Artwork/DockIdleCat/black-cat-original.png",
+  "sourceKind": "User-supplied transparent PNG, received 2026-11-03",
+  "sourceSha256": "6bfdf6e35ead0838509e9381a5964fc8f0a7df8d133797eada314fe8f32d04a9",
+  "cropBounds": [
+    105,
+    95,
+    1151,
+    1125
+  ],
+  "solidAlphaBounds": [
+    127,
+    129,
+    896,
+    887
+  ],
+  "generator": "scripts/prepare-dock-idle.py",
+  "uses": [
+    "transparent cat at the center of the Dock while idle",
+    "mouse-following pupils"
+  ],
+  "eyeLayers": "Original pupils and highlights lifted from the PNG; amber repaired underneath",
+  "outputs": {
+    "Sources/EmberCat/Resources/DockIdleCat/CatIdle.png": "25e3e679634e54f6d24a1babb1fa8413643229a3fdfe850cf4936c9c74ae8a09",
+    "Sources/EmberCat/Resources/DockIdleCat/CatIdleBase.png": "bb9a277ab54f2d70724ec4b2fb147376ed8ff31596d735f9565ed080adeea056",
+    "Sources/EmberCat/Resources/DockIdleCat/CatPupilLeft.png": "18a5e526d7c47a6d948f12975413faa61c3c8bb3a228092892e7f7563aa9974d",
+    "Sources/EmberCat/Resources/DockIdleCat/CatPupilRight.png": "412844241fa9c8bd3b3d94d0303f72b6ead62a9176cd75e7a5feb6255e6c6665",
+    "Sources/EmberCat/Resources/DockIdleCat/CatEyesMask.png": "563daf06ef534ef35741170828b8f25a63feefeb22363ebb057283230e4a161d"
+  }
+}

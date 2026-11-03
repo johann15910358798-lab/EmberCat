@@ -1,8 +1,17 @@
-import Foundation
+import AppKit
 
 private final class ResourceBundleMarker {}
 
 enum AppResources {
+    @MainActor
+    static let dockIdleCat: NSImage? = {
+        guard let folder = directory("DockIdleCat"),
+              let image = NSImage(contentsOf: folder.appendingPathComponent("CatIdle.png")),
+              image.isValid else { return nil }
+        image.isTemplate = false
+        return image
+    }()
+
     // Packaged apps have loose resources; SwiftPM builds use a sibling bundle.
     // Bundle.module traps when that bundle is absent, so probe optional bundles.
     private static let roots: [URL] = {

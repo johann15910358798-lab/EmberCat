@@ -31,12 +31,9 @@ let package = Package(
             exclude: [
                 "Resources/Sprites",
                 "Resources/NotchFlame",
-                "NotchFlameController.swift",
-                "NotchFlameRenderer.swift",
-                "NotchFlameSettings.swift",
-                "NotchFlamePreviewController.swift",
             ],
             resources: [.copy("Resources/MenuBarPets"), .copy("Resources/SourceIcons"),
+                        .copy("Resources/DockIdleCat"),
                         .copy("Resources/PetPreview")]
         ),
         .testTarget(name: "EmberCatTests", dependencies: ["EmberCat"], path: "Tests/EmberCatTests"),

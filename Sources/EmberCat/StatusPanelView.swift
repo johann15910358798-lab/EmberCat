@@ -9,7 +9,7 @@ final class StatusPanelState: ObservableObject {
 
         var size: NSSize {
             switch self {
-            case .menu: NSSize(width: 300, height: 306)
+            case .menu: NSSize(width: 300, height: 458)
             case .sources: NSSize(width: 536, height: 402)
             }
         }
@@ -18,10 +18,14 @@ final class StatusPanelState: ObservableObject {
     @Published var page: Page = .menu
     @Published var style: PetStyle
     @Published var showsTokenRate: Bool
+    @Published var showsNotchFlame: Bool
+    @Published var showsDockCat: Bool
 
-    init(style: PetStyle, showsTokenRate: Bool) {
+    init(style: PetStyle, showsTokenRate: Bool, showsNotchFlame: Bool, showsDockCat: Bool) {
         self.style = style
         self.showsTokenRate = showsTokenRate
+        self.showsNotchFlame = showsNotchFlame
+        self.showsDockCat = showsDockCat
     }
 }
 
@@ -29,10 +33,15 @@ final class StatusPanelState: ObservableObject {
 struct StatusPanelView: View {
     @ObservedObject var viewModel: SpeedMonitorModel
     @ObservedObject var state: StatusPanelState
+    @ObservedObject var dockSettings: DockOrbitSettings
     let onNavigate: (StatusPanelState.Page) -> Void
     let onSelectStyle: (PetStyle) -> Void
     let onSelectDisplay: (Bool) -> Void
+    let onSelectFlame: (Bool) -> Void
+    let onSelectDock: (Bool) -> Void
+    let onCustomizePawColor: () -> Void
     let onPreview: () -> Void
+    let onFlamePreview: () -> Void
     let onClose: () -> Void
     let onQuit: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -104,6 +113,61 @@ struct StatusPanelView: View {
                         .controlSize(.mini)
                         .accessibilityIdentifier("show-token-rate")
                 }
+                HStack {
+                    Text("灵动岛火焰").font(.system(size: 12))
+                    Spacer()
+                    Toggle("灵动岛火焰", isOn: Binding(get: { state.showsNotchFlame }, set: { onSelectFlame($0) }))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .accessibilityIdentifier("show-notch-flame")
+                }
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("绕 Dock 跑圈").font(.system(size: 12))
+                        Text(dockSubtitle).font(.system(size: 10)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 4)
+                    if state.showsDockCat && dockSettings.status == .needsAccessibility {
+                        Button("允许…") { dockSettings.requestAccessibility() }
+                            .font(.system(size: 10))
+                            .accessibilityIdentifier("allow-dock-access")
+                    }
+                    Toggle("绕 Dock 跑圈", isOn: Binding(get: { state.showsDockCat }, set: { onSelectDock($0) }))
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .controlSize(.mini)
+                        .accessibilityIdentifier("show-dock-cat")
+                }
+                HStack(spacing: 10) {
+                    Text("脚印荧光色").font(.system(size: 12))
+                    Spacer(minLength: 0)
+                    HStack(spacing: 5) {
+                        ForEach(DockOrbitSettings.trailPresets, id: \.hex) { preset in
+                            Button {
+                                if let color = DockOrbitSettings.color(hex: preset.hex) { dockSettings.setTrailColor(color) }
+                            } label: {
+                                Circle()
+                                    .fill(Color(nsColor: DockOrbitSettings.color(hex: preset.hex)!))
+                                    .frame(width: 12, height: 12)
+                                    .shadow(color: Color(nsColor: DockOrbitSettings.color(hex: preset.hex)!).opacity(0.45), radius: 2)
+                                    .padding(3)
+                                    .overlay(Circle().strokeBorder(dockSettings.trailColorHex == preset.hex
+                                                                  ? Color.primary.opacity(0.55) : .clear, lineWidth: 1))
+                                    .contentShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .help(preset.name)
+                            .accessibilityLabel(preset.name)
+                            .accessibilityAddTraits(dockSettings.trailColorHex == preset.hex ? .isSelected : [])
+                        }
+                    }
+                    Button("自定义…", action: onCustomizePawColor)
+                        .font(.system(size: 10))
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("customize-paw-color")
+                }
                 HStack(spacing: 10) {
                     Text("形象")
                         .font(.system(size: 12))
@@ -132,6 +196,7 @@ struct StatusPanelView: View {
 
             VStack(spacing: 1) {
                 PanelActionRow(title: "动作预览…", symbol: "play.rectangle", action: onPreview)
+                PanelActionRow(title: "火焰设置与预览…", symbol: "flame", action: onFlamePreview)
                 PanelActionRow(title: "退出 EmberCat", symbol: "power", action: onQuit)
             }
             .padding(6)
@@ -142,6 +207,15 @@ struct StatusPanelView: View {
     private var sourceSummary: String {
         let sources = viewModel.snapshot.sources.filter { $0.enabled && $0.available }
         return sources.isEmpty ? "正在发现本地来源" : "\(sources.count) 个来源 · 查看各自速度"
+    }
+
+    private var dockSubtitle: String {
+        guard state.showsDockCat else { return "黑猫沿 Dock 四边跑动" }
+        switch dockSettings.status {
+        case .needsAccessibility: return "需辅助功能权限定位 Dock"
+        case .waitingForDock: return "Dock 显示后继续跑圈"
+        case .following, .disabled: return "圆角转身 · 随 tok/s 加速"
+        }
     }
 
     @ViewBuilder private func petImage(_ style: PetStyle) -> some View {
