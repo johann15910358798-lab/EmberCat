@@ -6,6 +6,7 @@ import SwiftUI
 final class StatusItemController: NSObject, NSPopoverDelegate {
     private let statusItem: NSStatusItem
     private let viewModel: SpeedMonitorModel
+    private let updates: AppUpdateController
     private let defaults: UserDefaults
     private let flameSettings: NotchFlameSettings
     private let dockSettings: DockOrbitSettings
@@ -30,9 +31,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         let index: Int
     }
 
-    init(viewModel: SpeedMonitorModel, defaults: UserDefaults = .standard,
+    init(viewModel: SpeedMonitorModel, updates: AppUpdateController, defaults: UserDefaults = .standard,
          flameSettings: NotchFlameSettings = .shared, dockSettings: DockOrbitSettings = .shared) {
         self.viewModel = viewModel
+        self.updates = updates
         self.defaults = defaults
         self.flameSettings = flameSettings
         self.dockSettings = dockSettings
@@ -161,7 +163,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             popover.behavior = .transient
             popover.delegate = self
             let host = NSHostingController(rootView: StatusPanelView(
-                viewModel: viewModel, state: panelState, dockSettings: dockSettings,
+                viewModel: viewModel, state: panelState, dockSettings: dockSettings, updates: updates,
                 onNavigate: { [weak self] in self?.navigate(to: $0) },
                 onSelectStyle: { [weak self] in self?.selectStyle($0) },
                 onSelectDisplay: { [weak self] in self?.selectDisplayMode($0) },
@@ -170,6 +172,10 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 onCustomizePawColor: { [weak self] in self?.showPawColorPicker() },
                 onPreview: { [weak self] in self?.showPreview() },
                 onFlamePreview: { [weak self] in self?.showFlamePreview() },
+                onCheckForUpdates: { [weak self] in
+                    self?.menuPopover?.close()
+                    self?.updates.checkForUpdates()
+                },
                 onClose: { [weak self] in self?.menuPopover?.close() },
                 onQuit: { NSApplication.shared.terminate(nil) }))
             // One popover owns both pages. Its native size animation keeps the

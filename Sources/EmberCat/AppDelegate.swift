@@ -6,6 +6,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
     private var flame: NotchFlameController?
     private var dockCat: DockOrbitController?
+    private var updates: AppUpdateController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         flame = NotchFlameController()
@@ -14,7 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.flame?.update(speed: snapshot.live.output)
             self?.dockCat?.update(speed: snapshot.live.output)
         }
-        statusItem = StatusItemController(viewModel: viewModel)
+        let updates = AppUpdateController()
+        self.updates = updates
+        statusItem = StatusItemController(viewModel: viewModel, updates: updates)
         viewModel.start()
     }
 

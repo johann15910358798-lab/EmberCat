@@ -47,6 +47,10 @@ enum NotchDisplayChecks {
                         "Use global auxiliary-area coordinates exactly once")
                     try require(near(profile.panelFrame.maxY, screen.maxY)
                         && near(profile.panelFrame.midX, notch.midX), "Attach fire to the top-band notch")
+                    try require(near(profile.panelFrame.minX, notch.minX - profile.geometry.padding)
+                        && near(profile.panelFrame.maxX, notch.maxX + profile.geometry.padding)
+                        && profile.geometry.padding == 5,
+                        "Reserve only a narrow margin for the existing outer rim")
                     try require(screen.insetBy(dx: -0.001, dy: -0.001).contains(profile.panelFrame),
                         "Keep all flame padding on the selected screen")
                     var singleScale = fixture

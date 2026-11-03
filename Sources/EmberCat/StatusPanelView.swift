@@ -9,7 +9,7 @@ final class StatusPanelState: ObservableObject {
 
         var size: NSSize {
             switch self {
-            case .menu: NSSize(width: 300, height: 458)
+            case .menu: NSSize(width: 300, height: 556)
             case .sources: NSSize(width: 536, height: 402)
             }
         }
@@ -34,6 +34,7 @@ struct StatusPanelView: View {
     @ObservedObject var viewModel: SpeedMonitorModel
     @ObservedObject var state: StatusPanelState
     @ObservedObject var dockSettings: DockOrbitSettings
+    @ObservedObject var updates: AppUpdateController
     let onNavigate: (StatusPanelState.Page) -> Void
     let onSelectStyle: (PetStyle) -> Void
     let onSelectDisplay: (Bool) -> Void
@@ -42,6 +43,7 @@ struct StatusPanelView: View {
     let onCustomizePawColor: () -> Void
     let onPreview: () -> Void
     let onFlamePreview: () -> Void
+    let onCheckForUpdates: () -> Void
     let onClose: () -> Void
     let onQuit: () -> Void
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -197,6 +199,27 @@ struct StatusPanelView: View {
             VStack(spacing: 1) {
                 PanelActionRow(title: "动作预览…", symbol: "play.rectangle", action: onPreview)
                 PanelActionRow(title: "火焰设置与预览…", symbol: "flame", action: onFlamePreview)
+                PanelActionRow(title: updates.availableVersion.map { "更新至 \($0)…" } ?? "检查更新…",
+                    symbol: "arrow.down.circle", action: onCheckForUpdates)
+                    .disabled(!updates.canCheckForUpdates)
+                    .accessibilityIdentifier("check-for-updates")
+                HStack {
+                    Text("自动检查更新").font(.system(size: 11))
+                    Spacer()
+                    Toggle("自动检查更新", isOn: Binding(get: { updates.automaticallyChecksForUpdates },
+                        set: { updates.setAutomaticChecks($0) }))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        .accessibilityIdentifier("automatic-update-checks")
+                }.padding(.horizontal, 10).padding(.vertical, 4)
+                HStack {
+                    Text("自动下载并安装").font(.system(size: 11))
+                    Spacer()
+                    Toggle("自动下载并安装", isOn: Binding(get: { updates.automaticallyDownloadsUpdates },
+                        set: { updates.setAutomaticDownloads($0) }))
+                        .labelsHidden().toggleStyle(.switch).controlSize(.mini)
+                        .disabled(!updates.automaticallyChecksForUpdates)
+                        .accessibilityIdentifier("automatic-update-downloads")
+                }.padding(.horizontal, 10).padding(.vertical, 4)
                 PanelActionRow(title: "退出 EmberCat", symbol: "power", action: onQuit)
             }
             .padding(6)

@@ -4,7 +4,8 @@ import MetalKit
 struct NotchFlameGeometry {
     let notchWidth: CGFloat
     let notchHeight: CGFloat
-    let padding: CGFloat = 30
+    // Only the narrow outer rim needs space beside the notch; flames stay inside its width.
+    let padding: CGFloat = 5
     static let maximumFlameDepth: CGFloat = 80
 
     var size: CGSize {
@@ -169,6 +170,9 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private(set) var flameAppearance: NotchFlameAppearance = .standard
     private var lastSpeed: Double = 0
     private var lastActive = true
+    private(set) var renderedFrameCount: UInt64 = 0
+    private var frameLink: CADisplayLink?
+    var isRendering: Bool { frameLink != nil }
 
     init(geometry: NotchFlameGeometry, renderer: NotchFlameRenderer? = nil) throws {
         self.geometry = geometry
@@ -196,7 +200,9 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        pauseFrames()
         refreshDisplay()
+        if window != nil { resumeIfNeeded() }
     }
 
     override func viewDidChangeBackingProperties() {
@@ -206,11 +212,13 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
 
     func refreshDisplay(maximumFramesPerSecond: Int? = nil) {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
-        drawableSize = CGSize(width: ceil(bounds.width * scale), height: ceil(bounds.height * scale))
+        let size = CGSize(width: ceil(bounds.width * scale), height: ceil(bounds.height * scale))
+        if drawableSize != size { drawableSize = size }
         preferredFramesPerSecond = NotchDisplayProfile.frameRate(
             for: maximumFramesPerSecond ?? window?.screen?.maximumFramesPerSecond ?? 60)
+        updateFrameRate()
         // A paused reduced-motion surface still needs one redraw after a resize or display change.
-        if isPaused, !animation.isHidden { draw() }
+        if !isRendering, !animation.isHidden { draw() }
     }
 
     func setSpeed(_ speed: Double, active: Bool = true) {
@@ -238,20 +246,37 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         guard appearance != flameAppearance, appearance.validationError == nil else { return }
         flameAppearance = appearance
         // Reduced motion still updates an edited material once without starting a loop.
-        if isPaused, !animation.isHidden { draw() }
+        if !isRendering, !animation.isHidden { draw() }
     }
 
     private func resumeIfNeeded() {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        guard animation.needsFrames(reduceMotion: reduced) else { return }
-        if isPaused {
-            lastTime = ProcessInfo.processInfo.systemUptime
-            isPaused = false
-        }
+        guard animation.needsFrames(reduceMotion: reduced) else { pauseFrames(); return }
+        guard frameLink == nil, window != nil else { return }
+        lastTime = ProcessInfo.processInfo.systemUptime
+        // MTKView's internal loop can remain stopped after a preview window closes.
+        // Own the display link so editing, tracking and reopening share one lifecycle.
+        frameLink = displayLink(target: self, selector: #selector(displayFrame(_:)))
+        updateFrameRate()
+        frameLink?.add(to: .main, forMode: .common)
+    }
+
+    private func updateFrameRate() {
+        let fps = Float(preferredFramesPerSecond)
+        frameLink?.preferredFrameRateRange = CAFrameRateRange(minimum: min(60, fps), maximum: fps, preferred: fps)
+    }
+
+    @objc private func displayFrame(_ link: CADisplayLink) {
+        draw()
+    }
+
+    private func pauseFrames() {
+        frameLink?.invalidate()
+        frameLink = nil
     }
 
     func stop() {
-        isPaused = true
+        pauseFrames()
         animation.reset()
         if let accessibilityObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver)
@@ -267,7 +292,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         animation.advance(by: now - lastTime, reduceMotion: reduced, flow: flameAppearance.flow)
         lastTime = now
         guard let drawable = currentDrawable else {
-            if animation.isHidden { isPaused = true; onFadeOut?() }
+            if animation.isHidden { pauseFrames(); onFadeOut?() }
             return
         }
         do {
@@ -276,6 +301,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
                 visibility: Float(animation.visibility), drawsAnchor: drawsAnchor,
                 color: animation.color, appearance: flameAppearance,
                 reduceMotion: reduced, drawable: drawable)
+            renderedFrameCount &+= 1
         } catch {
             NSLog("EmberCat flame frame: %@", error.localizedDescription)
             stop()
@@ -283,7 +309,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
             return
         }
         if !animation.needsFrames(reduceMotion: reduced) {
-            isPaused = true
+            pauseFrames()
             if animation.isHidden { onFadeOut?() }
         }
     }

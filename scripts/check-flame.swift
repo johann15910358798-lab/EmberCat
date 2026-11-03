@@ -170,6 +170,7 @@ struct FlameCheck {
 
         let renderer = try NotchFlameRenderer()
         let geometry = NotchFlameGeometry(notchWidth: 180, notchHeight: 32)
+        let bottomInterior = Int((geometry.notch.minX + 12) * 2)..<Int((geometry.notch.maxX - 12) * 2)
         func channels(_ rate: Double, palette: NotchFlamePalette = .standard) throws -> [Double] {
             let data = bytes(try renderer.image(geometry: geometry, time: 8.73, speed: rate, palette: palette))
             var rgb = [0.0, 0.0, 0.0]
@@ -199,7 +200,7 @@ struct FlameCheck {
                 var whiteDelta = 0.0, darkLuminance = 0.0, count = 0
                 // Composite premultiplied pixels over white / black in the six-point band below the rim.
                 for y in 64..<76 {
-                    for x in 84..<396 {
+                    for x in bottomInterior {
                         let offset = (y*image.width+x)*4
                         let alpha = Double(data[offset+3])/255
                         let luminance = (Double(data[offset+2]) * 0.2126 + Double(data[offset+1]) * 0.7152
@@ -226,7 +227,7 @@ struct FlameCheck {
             let data = bytes(image)
             var whiteDelta = 0.0, blackLuminance = 0.0, count = 0.0
             for y in 64..<76 {
-                for x in 84..<396 {
+                for x in bottomInterior {
                     let offset = (y*image.width+x)*4
                     let alpha = Double(data[offset+3])/255
                     let luminance = (Double(data[offset+2]) * 0.2126 + Double(data[offset+1]) * 0.7152
@@ -249,13 +250,14 @@ struct FlameCheck {
             let data = bytes(image)
             var thirds = [0, 0, 0]
             var deepest = 0
-            for x in 84..<396 {
+            for x in bottomInterior {
                 try require(data[(65 * image.width + x) * 4 + 3] >= 240,
                     "Continuous opaque bottom outline at every phase")
             }
             for y in 100..<image.height {
-                for x in 60..<420 where data[(y * image.width + x) * 4 + 3] > 180 {
-                    thirds[min(2,(x - 60) / 120)] += 1
+                let start = Int(geometry.notch.minX * 2), end = Int(geometry.notch.maxX * 2)
+                for x in start..<end where data[(y * image.width + x) * 4 + 3] > 180 {
+                    thirds[min(2,(x - start) / ((end - start) / 3))] += 1
                     deepest = max(deepest, y)
                 }
             }
@@ -315,6 +317,21 @@ struct FlameCheck {
             for y in 0..<image.height {
                 try require(data[y * image.width * 4 + 3] == 0
                     && data[(y * image.width + image.width - 1) * 4 + 3] == 0, "No side clipping lines")
+                if CGFloat(y) / scale >= geometry.notchHeight + 5 {
+                    for x in 0..<image.width {
+                        let pointX = (CGFloat(x) + 0.5) / scale
+                        if pointX < geometry.notch.minX || pointX >= geometry.notch.maxX {
+                            try require(data[(y * image.width + x) * 4 + 3] == 0,
+                                "Flames and embers cannot extend sideways beyond the notch")
+                        }
+                    }
+                }
+            }
+            let rimY = Int(10 * scale)
+            for pointX in [geometry.notch.minX - 1, geometry.notch.maxX + 0.5] {
+                let x = Int(pointX * scale)
+                try require(data[(rimY * image.width + x) * 4 + 3] >= 220,
+                    "Preserve the bright outer rim on both sides")
             }
             for offset in stride(from: 0, to: data.count, by: 4) {
                 try require(data[offset] <= data[offset + 3] && data[offset + 1] <= data[offset + 3]
@@ -334,6 +351,21 @@ struct FlameCheck {
             "External display has a solid black anchor")
         let first = bytes(try renderer.image(geometry: geometry, time: 8.73, speed: 180))
         let second = bytes(try renderer.image(geometry: geometry, time: 9.13, speed: 180))
+        var flowingRimChanges = 0
+        var rimAlphaChanges = 0
+        let imageWidth = Int(geometry.size.width * 2)
+        for y in 4..<Int((geometry.notchHeight - geometry.cornerRadius - 2) * 2) {
+            for x in Int((geometry.notch.minX - 3.5) * 2)..<Int(geometry.notch.minX * 2) {
+                let offset = (y * imageWidth + x) * 4
+                if first[offset..<(offset + 4)] != second[offset..<(offset + 4)] {
+                    flowingRimChanges += 1
+                }
+                if first[offset + 3] != second[offset + 3] { rimAlphaChanges += 1 }
+            }
+        }
+        try require(flowingRimChanges > 100,
+            "The light on the outer rim must flow, even where the flame body is masked")
+        try require(rimAlphaChanges == 0, "The outer rim keeps its shape and width while its light moves")
         let differences = zip(first, second).filter { $0 != $1 }.count
         try require(differences > 1000, "The native density field evolves")
         let stillA = bytes(try renderer.image(geometry: geometry, time: 1, speed: 180, reduceMotion: true))
@@ -382,7 +414,7 @@ struct FlameCheck {
             try require(view.preferredFramesPerSecond == 120, "Request ProMotion cadence on capable displays")
             selectedDisplay.profile = nil
             NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
-            try require(!panel.isVisible && view.isPaused, "Suspend while no valid display is available")
+            try require(!panel.isVisible && !view.isRendering, "Suspend while no valid display is available")
             selectedDisplay.profile = originalDisplay
             NotificationCenter.default.post(name: NSApplication.didChangeScreenParametersNotification, object: nil)
             pump(0.2)
@@ -393,19 +425,19 @@ struct FlameCheck {
                 "Restore the correct anchor and cadence on the fallback display")
         }
         settings.isEnabled = false
-        try require(!panel.isVisible && view.isPaused, "Switch off hides and pauses immediately")
+        try require(!panel.isVisible && !view.isRendering, "Switch off hides and pauses immediately")
         settings.isEnabled = true
         pump(0.2)
         try require(panel.isVisible, "Switch on resumes the current measured rate")
         controller.update(speed: 0)
         pump(4.3)
-        try require(!panel.isVisible && view.isPaused, "Zero rate fades out then releases the frame loop")
+        try require(!panel.isVisible && !view.isRendering, "Zero rate fades out then releases the frame loop")
         controller.update(speed: 90)
         pump(0.2)
         try require(panel.isVisible, "New output wakes the same surface")
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
         controller.update(speed: 180)
-        try require(!panel.isVisible && view.isPaused, "Screen sleep suspends rendering")
+        try require(!panel.isVisible && !view.isRendering, "Screen sleep suspends rendering")
         NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
         pump(0.1)
         try require(!panel.isVisible, "Do not replay the pre-sleep rate")
@@ -422,10 +454,14 @@ struct FlameCheck {
                 "idle stop", "reduced motion", "GPU yellow red blue-white palette", "premultiplied alpha",
                 "continuous outline", "downward tongues", "custom and extreme color contrast",
                 "six persisted material sliders", "slider GPU response", "parameter extremes", "continuous flow adjustment",
-                "transparent bounds", "single noninteractive window", "toggle", "sleep and wake"],
+                "transparent bounds", "flames constrained to notch width", "outer flowing rim preserved",
+                "flowing light on a fixed outline independent of flame body",
+                "single noninteractive window", "toggle", "sleep and wake"],
             "device": profile?.summary ?? "unknown", "changedBytes": differences,
             "redRGB": red, "goldRGB": gold, "blueRGB": blue, "customGreenRGB": green, "customPurpleRGB": purple,
             "maximumFlameDepth": NotchFlameGeometry.maximumFlameDepth,
+            "flowingRimChangedPixels": flowingRimChanges,
+            "rimAlphaChangedPixels": rimAlphaChanges,
             "silhouette":silhouetteChecks,
             "displayCompatibility": displayChecks,
             "hardwareValidation": profile?.notchFrame == nil ? "flat external display only; no physical notch tested" : "current notch display",
@@ -451,7 +487,7 @@ struct FlameCheck {
             pump(45)
         }
         controller.shutdown()
-        try require(!panel.isVisible && view.isPaused, "Shutdown removes the surface and stops rendering")
+        try require(!panel.isVisible && !view.isRendering, "Shutdown removes the surface and stops rendering")
         print("PASS: six material sliders, customizable palette and ranges, continuous rim, downward flames, contrast, alpha, motion and lifecycle")
     }
 }

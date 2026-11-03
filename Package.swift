@@ -7,6 +7,9 @@ let package = Package(
     products: [
         .executable(name: "EmberCat", targets: ["EmberCat"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.1"),
+    ],
     targets: [
         .target(
             name: "CZstd",
@@ -26,7 +29,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "EmberCat",
-            dependencies: ["AgentSpeedCore"],
+            dependencies: ["AgentSpeedCore", .product(name: "Sparkle", package: "Sparkle")],
             path: "Sources/EmberCat",
             exclude: [
                 "Resources/Sprites",
@@ -34,7 +37,8 @@ let package = Package(
             ],
             resources: [.copy("Resources/MenuBarPets"), .copy("Resources/SourceIcons"),
                         .copy("Resources/DockIdleCat"),
-                        .copy("Resources/PetPreview")]
+                        .copy("Resources/PetPreview")],
+            linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),
         .testTarget(name: "EmberCatTests", dependencies: ["EmberCat"], path: "Tests/EmberCatTests"),
     ]

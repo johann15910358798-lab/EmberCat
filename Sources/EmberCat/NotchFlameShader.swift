@@ -131,6 +131,8 @@ enum NotchFlameShader {
                                   texture2d<float> noise [[texture(0)]]) {
       if (u.visibility < .0001) return float4(0.0);
       float2 p = in.uv*u.viewport;
+      float x = p.x-u.notchOrigin.x;
+      float flameMask = smoothstep(.75,3.25,min(x,u.notchSize.x-x));
       float2 edge = rim(p,u);
       float d = edge.y;
       float aa = .65/u.pixelScale;
@@ -145,8 +147,8 @@ enum NotchFlameShader {
       float n = max(d, 0.0);
       float3 tint = u.flameColor.rgb;
       float3 coreColor = mix(tint,float3(1.0),.78);
-      float4 fire = volumeFire(noise,p,edge,h,t,u);
-      float halo = exp(-n/4.0)*(.055+.055*h)*(1.0-smoothstep(12.0,18.0,n));
+      float4 fire = volumeFire(noise,p,edge,h,t,u)*flameMask;
+      float halo = exp(-n/2.0)*(.055+.055*h)*(1.0-smoothstep(3.0,4.0,n));
       float4 result = float4(tint*halo,halo);
       float rimGuard = (1.0-smoothstep(2.2,3.1,n))*.86;
       result = over(float3(.009,.012,.022),max(rimGuard,fire.a*.32),result);
@@ -161,18 +163,20 @@ enum NotchFlameShader {
         float y = u.notchOrigin.y+u.notchSize.y+(11.0+life*42.0)*u.style.w;
         float radius = .55+seed*.65;
         float distance = length((p-float2(x,y))/float2(radius,radius*1.65));
-        float lifeFade = smoothstep(0.0,.14,life)*(1.0-smoothstep(.64,1.0,life))*(.25+.65*h);
+        float lifeFade = smoothstep(0.0,.14,life)*(1.0-smoothstep(.64,1.0,life))*(.25+.65*h)*flameMask;
         float spark = (1.0-smoothstep(.25,1.2,distance))*lifeFade;
         float guard = (1.0-smoothstep(.8,2.0,distance))*lifeFade*.65;
         result = over(float3(.009,.012,.022),guard*(1.0-result.a),result);
         result = over(mix(tint,coreColor,.72),spark,result);
       }
 
-      // A constant, crisp U-shaped stroke cannot be broken up by the noise field.
+      // Light travels along the original U-shaped outline. Its shape and width stay fixed.
+      float rimLight = pow(.5+.5*sin(edge.x*.055-t*1.8),4.0);
+      float shimmer = noise2(noise,float2(edge.x*.10-t*.55,t*.12)).r;
       float stroke = 1.0-smoothstep(1.45-aa,1.45+aa,n);
-      result = over(mix(tint,coreColor,.20),stroke*.98,result);
-      float hotRim = (1.0-smoothstep(.23-aa*.5,.55+aa*.5,n))*.94;
-      result = over(coreColor,hotRim,result);
+      result = over(mix(tint,coreColor,.14+.72*rimLight+.10*shimmer),stroke*.98,result);
+      float contact = (1.0-smoothstep(.23-aa*.5,.55+aa*.5,n))*.94;
+      result = over(mix(tint,coreColor,.40+.55*rimLight),contact,result);
       result.rgb = result.rgb*outside+notch*(1.0-outside)*u.drawsAnchor;
       result.a = result.a*outside+(1.0-outside)*u.drawsAnchor;
       return result*u.visibility;
