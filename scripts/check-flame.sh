@@ -5,6 +5,8 @@ mkdir -p "$PROJECT_ROOT/.build/ModuleCache"
 swiftc -O -swift-version 6 -module-cache-path "$PROJECT_ROOT/.build/ModuleCache" \
     "$PROJECT_ROOT/Sources/EmberCat/NotchFlameAnimation.swift" \
     "$PROJECT_ROOT/Sources/EmberCat/NotchFlameShader.swift" \
+    "$PROJECT_ROOT/Sources/EmberCat/NotchMatrixShader.swift" \
+    "$PROJECT_ROOT/Sources/EmberCat/MatrixCodeFlow.swift" \
     "$PROJECT_ROOT/Sources/EmberCat/NotchFlameRenderer.swift" \
     "$PROJECT_ROOT/Sources/EmberCat/NotchFlameSettings.swift" \
     "$PROJECT_ROOT/Sources/EmberCat/NotchDisplayProfile.swift" \

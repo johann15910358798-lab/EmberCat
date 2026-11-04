@@ -68,10 +68,11 @@ final class NotchFlameController {
     private func refreshVisibility() {
         guard settings.isEnabled, !sleeping, !failed else { hide(); return }
         if lastSpeed > 0 {
-            if panel == nil || panel?.isVisible != true { refreshDisplay() }
+            if panel == nil || panel?.isVisible != true || flameView?.effect != settings.effect { refreshDisplay() }
             guard let panel, let flameView else { return }
             flameView.setPalette(settings.palette)
             flameView.setAppearance(settings.appearance)
+            flameView.setMatrixConfiguration(settings.matrixConfiguration)
             flameView.setSpeed(lastSpeed)
             if !panel.isVisible { panel.orderFrontRegardless() }
         } else {
@@ -85,8 +86,8 @@ final class NotchFlameController {
         if panel == nil {
             guard lastSpeed > 0 else { return }
             do {
-                let view = try NotchFlameMetalView(geometry: profile.geometry)
-                let panel = FlamePanel(contentRect: profile.panelFrame,
+                let view = try NotchFlameMetalView(geometry: profile.geometry(for: settings.effect))
+                let panel = FlamePanel(contentRect: profile.panelFrame(for: settings.effect),
                     styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
                 panel.title = "EmberCat · 灵动岛火焰"
                 panel.isOpaque = false
@@ -110,11 +111,13 @@ final class NotchFlameController {
                 return
             }
         }
-        flameView?.geometry = profile.geometry
+        flameView?.geometry = profile.geometry(for: settings.effect)
+        panel?.title = settings.effect == .matrix ? "EmberCat · Matrix 代码雨" : "EmberCat · 灵动岛火焰"
         flameView?.setPalette(settings.palette)
         flameView?.setAppearance(settings.appearance)
+        flameView?.setMatrixConfiguration(settings.matrixConfiguration)
         flameView?.drawsAnchor = profile.notchFrame == nil
-        panel?.setFrame(profile.panelFrame, display: true)
+        panel?.setFrame(profile.panelFrame(for: settings.effect), display: true)
         flameView?.refreshDisplay(maximumFramesPerSecond: profile.maximumFramesPerSecond)
         if lastSpeed > 0 {
             flameView?.setSpeed(lastSpeed)

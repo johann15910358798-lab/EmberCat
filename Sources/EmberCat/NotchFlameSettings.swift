@@ -1,5 +1,100 @@
 import AppKit
 
+enum NotchEffectStyle: String, CaseIterable {
+    case flame, matrix
+
+    var title: String {
+        switch self {
+        case .flame: "流焰"
+        case .matrix: "Matrix 代码雨"
+        }
+    }
+}
+
+struct NotchMatrixConfiguration: Codable, Equatable {
+    static let standard = NotchMatrixConfiguration()
+    var blackHoleSize: Double = 1.75
+    var gravity: Double = 1.8
+    var density: Double = 2
+    var verticalOffset: Double = 0
+
+    init(blackHoleSize: Double = 1.75, gravity: Double = 1.8, density: Double = 2,
+         verticalOffset: Double = 0) {
+        self.blackHoleSize = blackHoleSize
+        self.gravity = gravity
+        self.density = density
+        self.verticalOffset = verticalOffset
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case blackHoleSize, gravity, density, verticalOffset
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(blackHoleSize: try values.decode(Double.self, forKey: .blackHoleSize),
+            gravity: try values.decode(Double.self, forKey: .gravity),
+            density: try values.decode(Double.self, forKey: .density),
+            verticalOffset: try values.decodeIfPresent(Double.self, forKey: .verticalOffset) ?? 0)
+    }
+
+    var validationError: String? {
+        for parameter in NotchMatrixParameter.allCases {
+            let value = self[keyPath: parameter.keyPath]
+            if !value.isFinite || !parameter.range.contains(value) {
+                return "\(parameter.title)超出可调范围。"
+            }
+        }
+        return nil
+    }
+}
+
+enum NotchMatrixParameter: String, CaseIterable {
+    case blackHoleSize, gravity, density, verticalOffset
+
+    var title: String {
+        switch self {
+        case .blackHoleSize: "黑洞大小"
+        case .gravity: "引力强度"
+        case .density: "代码密度"
+        case .verticalOffset: "与刘海距离"
+        }
+    }
+
+    var range: ClosedRange<Double> {
+        switch self {
+        case .blackHoleSize: 0.75...2.5
+        case .gravity: 0.5...3
+        case .density: 0.4...3
+        case .verticalOffset: 0...64
+        }
+    }
+
+    var keyPath: WritableKeyPath<NotchMatrixConfiguration, Double> {
+        switch self {
+        case .blackHoleSize: \.blackHoleSize
+        case .gravity: \.gravity
+        case .density: \.density
+        case .verticalOffset: \.verticalOffset
+        }
+    }
+
+    func displayValue(_ value: Double) -> String {
+        self == .verticalOffset
+            ? (value == 0 ? "半嵌入" : String(format: "%.0f pt", value))
+            : String(format: "%.0f%%", value * 100)
+    }
+
+    var help: String {
+        switch self {
+        case .blackHoleSize: "放大或缩小黑洞；与刘海的距离可以单独调节。"
+        case .gravity: "越强越早汇聚吸入；远处保留竖直掉落。"
+        case .density: "调节代码数量，仍随 tok/s 增减；不改变已有字符的路径。"
+        case .verticalOffset: "0 为半嵌入；向下拉可完全脱离刘海，代码仍会吸入。"
+        }
+    }
+}
+
 struct NotchFlameAppearance: Codable, Equatable {
     static let standard = NotchFlameAppearance()
     var brightness: Double = 1
@@ -143,6 +238,7 @@ final class NotchFlameSettings {
     private let defaults: UserDefaults
     private(set) var palette: NotchFlamePalette
     private(set) var appearance: NotchFlameAppearance
+    private(set) var matrixConfiguration: NotchMatrixConfiguration
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -160,6 +256,24 @@ final class NotchFlameSettings {
         } else {
             appearance = .standard
         }
+        if let data = defaults.data(forKey: "notchMatrixConfiguration"),
+           let saved = try? JSONDecoder().decode(NotchMatrixConfiguration.self, from: data),
+           saved.validationError == nil {
+            matrixConfiguration = saved
+        } else {
+            matrixConfiguration = .standard
+        }
+    }
+
+    @discardableResult
+    func setMatrixConfiguration(_ configuration: NotchMatrixConfiguration) -> Bool {
+        guard configuration.validationError == nil,
+              let data = try? JSONEncoder().encode(configuration) else { return false }
+        guard configuration != matrixConfiguration else { return true }
+        matrixConfiguration = configuration
+        defaults.set(data, forKey: "notchMatrixConfiguration")
+        NotificationCenter.default.post(name: .emberCatFlameSettingsChanged, object: self)
+        return true
     }
 
     @discardableResult
@@ -194,6 +308,15 @@ final class NotchFlameSettings {
         set {
             guard newValue != isEnabled else { return }
             defaults.set(newValue, forKey: "notchFlamesEnabled")
+            NotificationCenter.default.post(name: .emberCatFlameSettingsChanged, object: self)
+        }
+    }
+
+    var effect: NotchEffectStyle {
+        get { defaults.string(forKey: "notchEffectStyle").flatMap(NotchEffectStyle.init(rawValue:)) ?? .flame }
+        set {
+            guard newValue != effect else { return }
+            defaults.set(newValue.rawValue, forKey: "notchEffectStyle")
             NotificationCenter.default.post(name: .emberCatFlameSettingsChanged, object: self)
         }
     }

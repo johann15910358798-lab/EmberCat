@@ -1,15 +1,26 @@
 import AppKit
 import MetalKit
 
+enum NotchMatrixColorScheme: String, CaseIterable {
+    case dark, light
+
+    @MainActor init(appearance: NSAppearance) {
+        self = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? .dark : .light
+    }
+}
+
 struct NotchFlameGeometry {
     let notchWidth: CGFloat
     let notchHeight: CGFloat
+    var effect: NotchEffectStyle = .flame
     // Only the narrow outer rim needs space beside the notch; flames stay inside its width.
     let padding: CGFloat = 5
     static let maximumFlameDepth: CGFloat = 80
+    static let maximumMatrixDepth: CGFloat = 112
 
     var size: CGSize {
-        CGSize(width: notchWidth + padding * 2, height: notchHeight + Self.maximumFlameDepth + 12)
+        CGSize(width: notchWidth + padding * 2,
+            height: notchHeight + (effect == .matrix ? Self.maximumMatrixDepth : Self.maximumFlameDepth) + 12)
     }
     var notch: CGRect { CGRect(x: padding, y: 0, width: notchWidth, height: notchHeight) }
     var cornerRadius: CGFloat { min(notchWidth / 2, notchHeight * 9 / 32) }
@@ -30,15 +41,20 @@ private struct FlameUniforms {
     var motion: SIMD4<Float>
 }
 
-/// One continuous density field, shared by the live overlay and native previews.
+/// The live overlay, native previews and exports share the same GPU composition.
 @MainActor
 final class NotchFlameRenderer {
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    private let matrixPipeline: MTLRenderPipelineState
+    private let matrixPulsePipeline: MTLRenderPipelineState
     private let noise: MTLTexture
+    private let glyphs: MTLTexture
+    private let matrixSeed: UInt64
 
-    init() throws {
+    init(matrixSeed: UInt64 = MatrixCodeFlow.sessionSeed) throws {
+        self.matrixSeed = matrixSeed
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
             throw Self.error("Metal is unavailable")
         }
@@ -67,20 +83,33 @@ final class NotchFlameRenderer {
             noise.replace(region: MTLRegionMake2D(0, 0, 128, 128), mipmapLevel: 0,
                 withBytes: $0.baseAddress!, bytesPerRow: 128 * 4)
         }
-        let library = try device.makeLibrary(source: NotchFlameShader.source, options: nil)
+        glyphs = try Self.makeGlyphAtlas(device: device)
+        let library = try device.makeLibrary(source: NotchFlameShader.source + NotchMatrixShader.source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "flameVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "flameFragment")
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.fragmentFunction = library.makeFunction(name: "matrixFragment")
+        matrixPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.vertexFunction = library.makeFunction(name: "matrixPulseVertex")
+        descriptor.fragmentFunction = library.makeFunction(name: "matrixPulseFragment")
+        descriptor.colorAttachments[0].isBlendingEnabled = true
+        descriptor.colorAttachments[0].sourceRGBBlendFactor = .one
+        descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
+        descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        matrixPulsePipeline = try device.makeRenderPipelineState(descriptor: descriptor)
     }
 
     func draw(texture: MTLTexture, geometry: NotchFlameGeometry, time: Double,
               heat: Float, visibility: Float = 1, drawsAnchor: Bool = false,
               color: SIMD3<Float> = NotchFlamePalette.standard.color(for: 180),
               appearance: NotchFlameAppearance = .standard,
+              matrixConfiguration: NotchMatrixConfiguration = .standard,
+              matrixColorScheme: NotchMatrixColorScheme = .dark,
               reduceMotion: Bool = false, drawable: CAMetalDrawable? = nil,
-              wait: Bool = false) throws {
+              wait: Bool = false, matrixPass: MatrixFlowPass = .composed) throws {
         guard let command = queue.makeCommandBuffer() else { throw Self.error("No command buffer") }
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = texture
@@ -90,22 +119,55 @@ final class NotchFlameRenderer {
         guard let encoder = command.makeRenderCommandEncoder(descriptor: pass) else {
             throw Self.error("No render encoder")
         }
+        let effectiveTime = reduceMotion ? 8.73 : time
+        let matrixFrame = geometry.effect == .matrix && visibility > 0.0001 && heat > 0.0001
+            ? MatrixCodeFlow.frame(geometry: geometry, time: effectiveTime,
+                heat: heat, configuration: matrixConfiguration, pass: matrixPass, seed: matrixSeed)
+            : MatrixFlowFrame()
         var uniforms = FlameUniforms(
             viewport: SIMD2(Float(geometry.size.width), Float(geometry.size.height)),
             notchOrigin: SIMD2(Float(geometry.notch.minX), Float(geometry.notch.minY)),
             notchSize: SIMD2(Float(geometry.notchWidth), Float(geometry.notchHeight)),
             pixelScale: Float(texture.width) / Float(geometry.size.width),
-            time: Float(reduceMotion ? 8.73 : time),
+            time: Float(effectiveTime),
             heat: heat, visibility: visibility, drawsAnchor: drawsAnchor ? 1 : 0,
             cornerRadius: Float(geometry.cornerRadius),
             flameColor: SIMD4(color.x, color.y, color.z, 1),
             style: SIMD4(Float(appearance.brightness), Float(appearance.core),
                 Float(appearance.transparency), Float(appearance.length)),
-            motion: SIMD4(Float(appearance.turbulence), 0, 0, 0))
-        encoder.setRenderPipelineState(pipeline)
+            motion: SIMD4(Float(appearance.turbulence), Float(matrixFrame.ports.count),
+                matrixColorScheme == .light ? 1 : 0, 0))
+        encoder.setRenderPipelineState(geometry.effect == .matrix ? matrixPipeline : pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlameUniforms>.stride, index: 0)
+        if geometry.effect == .matrix {
+            var horizon = MatrixCodeFlow.horizon(geometry: geometry, configuration: matrixConfiguration)
+            encoder.setFragmentBytes(&horizon, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
+            var diskPlane = MatrixCodeFlow.diskPlane(geometry: geometry, configuration: matrixConfiguration)
+            encoder.setFragmentBytes(&diskPlane, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+            let ports = matrixFrame.ports.isEmpty ? [SIMD4<Float>.zero] : matrixFrame.ports.map(\.uniform)
+            ports.withUnsafeBufferPointer { buffer in
+                encoder.setFragmentBytes(buffer.baseAddress!,
+                    length: buffer.count * MemoryLayout<SIMD4<Float>>.stride, index: 1)
+            }
+        }
         encoder.setFragmentTexture(noise, index: 0)
+        encoder.setFragmentTexture(glyphs, index: 1)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        if geometry.effect == .matrix, visibility > 0.0001, heat > 0.0001 {
+            let vertices = matrixFrame.vertices
+            if !vertices.isEmpty {
+                encoder.setRenderPipelineState(matrixPulsePipeline)
+                encoder.setVertexBytes(&uniforms, length: MemoryLayout<FlameUniforms>.stride, index: 0)
+                vertices.withUnsafeBufferPointer { buffer in
+                    for start in stride(from: 0, to: buffer.count, by: MatrixCodeFlow.maximumInlineVertices) {
+                        let count = min(MatrixCodeFlow.maximumInlineVertices, buffer.count - start)
+                        encoder.setVertexBytes(buffer.baseAddress!.advanced(by: start),
+                            length: count * MemoryLayout<MatrixPulseVertex>.stride, index: 1)
+                        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: count)
+                    }
+                }
+            }
+        }
         encoder.endEncoding()
         if let drawable { command.present(drawable) }
         command.commit()
@@ -119,8 +181,10 @@ final class NotchFlameRenderer {
                scale: CGFloat = 2, active: Bool = true, drawsAnchor: Bool = false,
                palette: NotchFlamePalette = .standard,
                color: SIMD3<Float>? = nil, appearance: NotchFlameAppearance = .standard,
+               matrixConfiguration: NotchMatrixConfiguration = .standard,
+               matrixColorScheme: NotchMatrixColorScheme = .dark,
                visibility: Float = 1,
-               reduceMotion: Bool = false) throws -> CGImage {
+               reduceMotion: Bool = false, matrixPass: MatrixFlowPass = .composed) throws -> CGImage {
         let width = Int((geometry.size.width * scale).rounded())
         let height = Int((geometry.size.height * scale).rounded())
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
@@ -134,7 +198,8 @@ final class NotchFlameRenderer {
         try draw(texture: texture, geometry: geometry, time: time,
             heat: heat, visibility: active && heat > 0 ? visibility : 0,
             drawsAnchor: drawsAnchor, color: color ?? palette.color(for: speed),
-            appearance: appearance, reduceMotion: reduceMotion, wait: true)
+            appearance: appearance, matrixConfiguration: matrixConfiguration, matrixColorScheme: matrixColorScheme,
+            reduceMotion: reduceMotion, wait: true, matrixPass: matrixPass)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         pixels.withUnsafeMutableBytes {
             texture.getBytes($0.baseAddress!, bytesPerRow: width * 4,
@@ -154,6 +219,41 @@ final class NotchFlameRenderer {
         NSError(domain: "EmberCat.Flame", code: 1,
             userInfo: [NSLocalizedDescriptionKey: description])
     }
+
+    /// Rasterize once at startup; every rain layer samples the same antialiased glyph atlas.
+    private static func makeGlyphAtlas(device: MTLDevice) throws -> MTLTexture {
+        let characters = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZアイウエオカキクケコサシスセソタチツテトナニヌネノハヒフ")
+        let cell = 32, side = cell * 8
+        guard let context = CGContext(data: nil, width: side, height: side,
+            bitsPerComponent: 8, bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else {
+            throw error("Could not allocate code rain glyph atlas")
+        }
+        context.translateBy(x: 0, y: CGFloat(side))
+        context.scaleBy(x: 1, y: -1)
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: context, flipped: true)
+        for (index, character) in characters.prefix(64).enumerated() {
+            let font = index < 36 ? NSFont.monospacedSystemFont(ofSize: 26, weight: .medium)
+                : NSFont(name: "HiraginoSans-W5", size: 25) ?? NSFont.systemFont(ofSize: 25)
+            let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+            let text = String(character) as NSString
+            let size = text.size(withAttributes: attributes)
+            text.draw(at: CGPoint(x: CGFloat(index % 8 * cell) + (CGFloat(cell) - size.width) / 2,
+                y: CGFloat(index / 8 * cell) + (CGFloat(cell) - size.height) / 2), withAttributes: attributes)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm,
+            width: side, height: side, mipmapped: false)
+        descriptor.storageMode = .shared
+        descriptor.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: descriptor), let data = context.data else {
+            throw error("Could not upload code rain glyph atlas")
+        }
+        texture.replace(region: MTLRegionMake2D(0, 0, side, side), mipmapLevel: 0,
+            withBytes: data, bytesPerRow: side * 4)
+        return texture
+    }
 }
 
 @MainActor
@@ -164,10 +264,22 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     var onRenderFailure: (() -> Void)?
     private let renderer: NotchFlameRenderer
     private var animation = NotchFlameAnimation()
+    var animationPhase: Double { animation.phase }
     private var lastTime = ProcessInfo.processInfo.systemUptime
     private var accessibilityObserver: NSObjectProtocol?
     private(set) var palette: NotchFlamePalette = .standard
     private(set) var flameAppearance: NotchFlameAppearance = .standard
+    private(set) var matrixConfiguration: NotchMatrixConfiguration = .standard
+    // The live overlay inherits macOS appearance. Only fixed preview backgrounds override it.
+    var matrixColorSchemeOverride: NotchMatrixColorScheme? {
+        didSet {
+            if oldValue != matrixColorSchemeOverride { redrawAppearanceIfNeeded() }
+        }
+    }
+    var matrixColorScheme: NotchMatrixColorScheme {
+        matrixColorSchemeOverride ?? NotchMatrixColorScheme(appearance: effectiveAppearance)
+    }
+    var effect: NotchEffectStyle { geometry.effect }
     private var lastSpeed: Double = 0
     private var lastActive = true
     private(set) var renderedFrameCount: UInt64 = 0
@@ -210,6 +322,16 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         refreshDisplay()
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        redrawAppearanceIfNeeded()
+    }
+
+    private func redrawAppearanceIfNeeded() {
+        // A frozen reduced-motion preview still changes palette immediately.
+        if effect == .matrix, !isRendering, !animation.isHidden { draw() }
+    }
+
     func refreshDisplay(maximumFramesPerSecond: Int? = nil) {
         let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
         let size = CGSize(width: ceil(bounds.width * scale), height: ceil(bounds.height * scale))
@@ -246,6 +368,13 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         guard appearance != flameAppearance, appearance.validationError == nil else { return }
         flameAppearance = appearance
         // Reduced motion still updates an edited material once without starting a loop.
+        if !isRendering, !animation.isHidden { draw() }
+    }
+
+    func setMatrixConfiguration(_ configuration: NotchMatrixConfiguration) {
+        guard configuration != matrixConfiguration, configuration.validationError == nil else { return }
+        matrixConfiguration = configuration
+        // Tuning keeps the running phase; reduced motion redraws just once.
         if !isRendering, !animation.isHidden { draw() }
     }
 
@@ -289,7 +418,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     func draw(in view: MTKView) {
         let now = ProcessInfo.processInfo.systemUptime
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        animation.advance(by: now - lastTime, reduceMotion: reduced, flow: flameAppearance.flow)
+        animation.advance(by: now - lastTime, reduceMotion: reduced,
+            flow: effect == .matrix ? MatrixCodeFlow.motionMultiplier(heat: animation.heat) : flameAppearance.flow)
         lastTime = now
         guard let drawable = currentDrawable else {
             if animation.isHidden { pauseFrames(); onFadeOut?() }
@@ -299,7 +429,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
             try renderer.draw(texture: drawable.texture, geometry: geometry,
                 time: animation.phase, heat: Float(animation.heat),
                 visibility: Float(animation.visibility), drawsAnchor: drawsAnchor,
-                color: animation.color, appearance: flameAppearance,
+                color: animation.color, appearance: flameAppearance, matrixConfiguration: matrixConfiguration,
+                matrixColorScheme: matrixColorScheme,
                 reduceMotion: reduced, drawable: drawable)
             renderedFrameCount &+= 1
         } catch {

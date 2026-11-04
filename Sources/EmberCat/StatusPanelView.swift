@@ -9,7 +9,7 @@ final class StatusPanelState: ObservableObject {
 
         var size: NSSize {
             switch self {
-            case .menu: NSSize(width: 300, height: 556)
+            case .menu: NSSize(width: 300, height: 592)
             case .sources: NSSize(width: 536, height: 402)
             }
         }
@@ -19,13 +19,16 @@ final class StatusPanelState: ObservableObject {
     @Published var style: PetStyle
     @Published var showsTokenRate: Bool
     @Published var showsNotchFlame: Bool
+    @Published var notchEffect: NotchEffectStyle
     @Published var showsDockCat: Bool
 
-    init(style: PetStyle, showsTokenRate: Bool, showsNotchFlame: Bool, showsDockCat: Bool) {
+    init(style: PetStyle, showsTokenRate: Bool, showsNotchFlame: Bool, showsDockCat: Bool,
+         notchEffect: NotchEffectStyle = .flame) {
         self.style = style
         self.showsTokenRate = showsTokenRate
         self.showsNotchFlame = showsNotchFlame
         self.showsDockCat = showsDockCat
+        self.notchEffect = notchEffect
     }
 }
 
@@ -39,6 +42,7 @@ struct StatusPanelView: View {
     let onSelectStyle: (PetStyle) -> Void
     let onSelectDisplay: (Bool) -> Void
     let onSelectFlame: (Bool) -> Void
+    let onSelectNotchEffect: (NotchEffectStyle) -> Void
     let onSelectDock: (Bool) -> Void
     let onCustomizePawColor: () -> Void
     let onPreview: () -> Void
@@ -116,13 +120,27 @@ struct StatusPanelView: View {
                         .accessibilityIdentifier("show-token-rate")
                 }
                 HStack {
-                    Text("灵动岛火焰").font(.system(size: 12))
+                    Text("刘海特效").font(.system(size: 12))
                     Spacer()
-                    Toggle("灵动岛火焰", isOn: Binding(get: { state.showsNotchFlame }, set: { onSelectFlame($0) }))
+                    Toggle("刘海特效", isOn: Binding(get: { state.showsNotchFlame }, set: { onSelectFlame($0) }))
                         .labelsHidden()
                         .toggleStyle(.switch)
                         .controlSize(.mini)
                         .accessibilityIdentifier("show-notch-flame")
+                }
+                HStack(spacing: 10) {
+                    Text("特效样式").font(.system(size: 12))
+                    Spacer(minLength: 0)
+                    Picker("特效样式", selection: Binding(get: { state.notchEffect }, set: { onSelectNotchEffect($0) })) {
+                        ForEach(NotchEffectStyle.allCases, id: \.rawValue) { effect in
+                            Text(effect.title).tag(effect)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .controlSize(.small)
+                    .frame(width: 186)
+                    .accessibilityIdentifier("notch-effect-style")
                 }
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -198,7 +216,7 @@ struct StatusPanelView: View {
 
             VStack(spacing: 1) {
                 PanelActionRow(title: "动作预览…", symbol: "play.rectangle", action: onPreview)
-                PanelActionRow(title: "火焰设置与预览…", symbol: "flame", action: onFlamePreview)
+                PanelActionRow(title: "特效设置与预览…", symbol: "sparkles", action: onFlamePreview)
                 PanelActionRow(title: updates.availableVersion.map { "更新至 \($0)…" } ?? "检查更新…",
                     symbol: "arrow.down.circle", action: onCheckForUpdates)
                     .disabled(!updates.canCheckForUpdates)

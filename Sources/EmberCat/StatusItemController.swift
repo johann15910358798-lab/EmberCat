@@ -42,7 +42,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             style: defaults.string(forKey: "petStyle").flatMap(PetStyle.init(rawValue:)) ?? .cat,
             showsTokenRate: defaults.bool(forKey: "showsTokenRate"),
             showsNotchFlame: flameSettings.isEnabled,
-            showsDockCat: dockSettings.isEnabled)
+            showsDockCat: dockSettings.isEnabled, notchEffect: flameSettings.effect)
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         super.init()
 
@@ -168,6 +168,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
                 onSelectStyle: { [weak self] in self?.selectStyle($0) },
                 onSelectDisplay: { [weak self] in self?.selectDisplayMode($0) },
                 onSelectFlame: { [weak self] in self?.selectFlame($0) },
+                onSelectNotchEffect: { [weak self] in self?.selectNotchEffect($0) },
                 onSelectDock: { [weak self] in self?.selectDock($0) },
                 onCustomizePawColor: { [weak self] in self?.showPawColorPicker() },
                 onPreview: { [weak self] in self?.showPreview() },
@@ -186,6 +187,8 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
             menuPopover = popover
         }
         panelState.page = .menu
+        panelState.notchEffect = flameSettings.effect
+        panelState.showsNotchFlame = flameSettings.isEnabled
         menuPopover?.animates = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         menuPopover?.contentSize = StatusPanelState.Page.menu.size
         button.highlight(false)
@@ -238,6 +241,11 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         flameSettings.isEnabled = enabled
     }
 
+    private func selectNotchEffect(_ effect: NotchEffectStyle) {
+        panelState.notchEffect = effect
+        flameSettings.effect = effect
+    }
+
     private func showFlamePreview() {
         menuPopover?.close()
         pawColorPanel?.orderOut(nil)
@@ -246,6 +254,7 @@ final class StatusItemController: NSObject, NSPopoverDelegate {
         pawColorPanel = nil
         do {
             if flamePreview == nil { flamePreview = try NotchFlamePreviewController(settings: flameSettings) }
+            flamePreview?.selectEffect(flameSettings.effect)
             flamePreview?.showWindow(nil)
         } catch {
             NSAlert(error: error).runModal()
