@@ -323,14 +323,14 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         effectControl.selectedSegment = matrix ? 1 : 0
         titleLabel.stringValue = matrix ? "Matrix · 代码雨" : "刘海流焰"
         subtitleLabel.stringValue = matrix
-            ? "配色跟随 macOS：深色荧光绿，浅色墨青绿；下方同时预览两套配色。"
+            ? "代码吸入后微光湮灭，心跳随 tok/s 加快；中心与洞缘光可单独调节。"
             : "滑动调整火焰质感，为不同速度设定自己的颜色。"
         paletteEditor?.isHidden = matrix
         matrixControls?.isHidden = !matrix
         updateApplyButton()
         if let window {
             let top = window.frame.maxY
-            window.setContentSize(NSSize(width: 920, height: matrix ? 708 : 716))
+            window.setContentSize(NSSize(width: 920, height: matrix ? 800 : 716))
             window.setFrameOrigin(CGPoint(x: window.frame.minX, y: top-window.frame.height))
         }
     }
@@ -536,9 +536,10 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
     let width = max(740, Int(geometry.size.width * 3) + 80)
     let height = Int(geometry.size.height * 3) + 116
     func frame(time: Double, scale: CGFloat, speed: Double = 90, inputSpeed: Double? = nil,
-               visibility: Float = 1, pass: MatrixFlowPass = .composed) throws -> CGImage {
+               visibility: Float = 1, heartbeatTime: Double? = nil, pass: MatrixFlowPass = .composed) throws -> CGImage {
         let rendered = try renderer.image(geometry: geometry, time: time, speed: speed,
-            scale: 6, matrixConfiguration: configuration, visibility: visibility, matrixPass: pass)
+            scale: 6, matrixConfiguration: configuration,matrixHeartbeatTime:heartbeatTime,
+            visibility: visibility, matrixPass: pass)
         return try flameReviewImage(width: width, height: height, scale: scale) { context in
             flameText(pass == .aperture ? "暗核遮挡 · 诊断帧" : pass == .background ? "背景雨 · 不参与吸入"
                 : inputSpeed == nil ? "竖直代码雨 · 黑洞吸入草稿" : "代码密度与流速 · tok/s 联动",
@@ -548,7 +549,7 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
             drawFlameSample(context: context, image: rendered, geometry: geometry,
                 rect: CGRect(x: 18, y: 76, width: width - 36, height: height - 88), background: .dark,
                 caption: pass == .background ? "独立背景  /  保持竖直  /  不参与引力  /  下方淡出"
-                    : "背景直落  /  前景吸入  /  洞口残留  /  黑洞位置可调", zoom: 3)
+                    : "背景直落  /  洞缘吸收  /  中心呼吸  /  鼠标经过虚化", zoom: 3)
         }
     }
     let detail = try frame(time: 12.4, scale: 2)
@@ -577,6 +578,104 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
         MatrixCodeFlow.previewSeed ^ 0xD13F_A056]
     let sampleWidth = max(440, Int(geometry.size.width * 2) + 48)
     let sampleHeight = Int(geometry.size.height * 2) + 42
+    var floatingConfiguration = configuration
+    floatingConfiguration.verticalOffset = max(configuration.verticalOffset,
+        Double(MatrixCodeFlow.horizon(geometry:geometry,configuration:configuration).z)+8)
+    floatingConfiguration.verticalOffset = min(64,floatingConfiguration.verticalOffset)
+    let floatingHole = MatrixCodeFlow.horizon(geometry:geometry,configuration:floatingConfiguration)
+    func interactionFrame(seconds:Double,hover:Double,heartClock:Double,scale:CGFloat) throws -> CGImage {
+        try flameReviewImage(width:sampleWidth*2,height:sampleHeight+64,scale:scale) { context in
+            flameText("黑洞 · 中心呼吸与鼠标虚化",at:CGPoint(x:24,y:12),size:18,color:.white)
+            flameText("90 tok/s 模拟 · 悬空展示 · 悬停为导出模拟；交互窗口支持真实鼠标",
+                at:CGPoint(x:24,y:38),size:10,color:.lightGray)
+            for (index,background) in [FlamePreviewBackground.dark,.white].enumerated() {
+                let image = try renderer.image(geometry:geometry,time:12.4+seconds*0.8,speed:90,scale:4,
+                    matrixConfiguration:floatingConfiguration,matrixColorScheme:background.matrixColorScheme!,
+                    matrixHover:hover,matrixHeartbeatTime:heartClock)
+                let rect = CGRect(x:index*sampleWidth+12,y:64,width:sampleWidth-24,height:sampleHeight-12)
+                let label = hover > 0.5 ? "鼠标经过 · 黑洞虚化" : hover > 0.01 ? "移开后柔和恢复" : "中心心跳 · 进入后微光湮灭"
+                drawFlameSample(context:context,image:image,geometry:geometry,rect:rect,
+                    background:background,caption:label,zoom:2)
+                if hover > 0.5 {
+                    let origin = CGPoint(x:rect.midX-geometry.size.width,y:rect.minY)
+                    let x = origin.x+CGFloat(floatingHole.x)*2+3,y = origin.y+CGFloat(floatingHole.y)*2+2
+                    let cursor = NSBezierPath()
+                    cursor.move(to:CGPoint(x:x,y:y))
+                    cursor.line(to:CGPoint(x:x+3,y:y+17))
+                    cursor.line(to:CGPoint(x:x+7,y:y+12))
+                    cursor.line(to:CGPoint(x:x+13,y:y+12))
+                    cursor.close()
+                    NSColor.white.setStroke();NSColor.black.setFill()
+                    cursor.lineWidth = 1.5;cursor.fill();cursor.stroke()
+                }
+            }
+        }
+    }
+    let interactionComparison = try flameReviewImage(width:sampleWidth*2,height:(sampleHeight+64)*2,scale:2) { context in
+        for (index,hover) in [0.0,1.0].enumerated() {
+            let heartClock = 0.73*MatrixHoleInteraction.heartbeatMultiplier(heat:NotchFlameAnimation.heat(for:90))
+            let image = try interactionFrame(seconds:0.73,hover:hover,heartClock:heartClock,scale:2)
+            context.saveGState()
+            context.translateBy(x:0,y:CGFloat((sampleHeight+64)*(index+1)))
+            context.scaleBy(x:1,y:-1)
+            context.draw(image,in:CGRect(x:0,y:0,width:sampleWidth*2,height:sampleHeight+64))
+            context.restoreGState()
+        }
+    }
+    try NSBitmapImageRep(cgImage:interactionComparison).representation(using:.png,properties:[:])!
+        .write(to:folder.appendingPathComponent("matrix-interaction-comparison.png"))
+    let interactionFrames = 420,interactionFPS = 50.0
+    let interactionDestination = CGImageDestinationCreateWithURL(
+        folder.appendingPathComponent("matrix-interaction.gif") as CFURL,UTType.gif.identifier as CFString,
+        interactionFrames,nil)!
+    CGImageDestinationSetProperties(interactionDestination,[kCGImagePropertyGIFDictionary:
+        [kCGImagePropertyGIFLoopCount:0]] as CFDictionary)
+    var pointerFeedback = MatrixHoleInteraction()
+    for index in 0..<interactionFrames {
+        let seconds = Double(index)/interactionFPS
+        pointerFeedback.advance(by:1/interactionFPS,hovered:seconds >= 2.4 && seconds < 4.7,
+            reduceMotion:false,heat:NotchFlameAnimation.heat(for:90))
+        CGImageDestinationAddImage(interactionDestination,
+            try interactionFrame(seconds:seconds,hover:pointerFeedback.hover,heartClock:pointerFeedback.elapsed,scale:1),
+            [kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:1/interactionFPS]] as CFDictionary)
+    }
+    guard CGImageDestinationFinalize(interactionDestination) else {
+        throw NSError(domain:"EmberCat.MatrixPreview",code:5)
+    }
+    let heartRates = [20.0,90,180]
+    let heartFrames = 400
+    let heartDestination = CGImageDestinationCreateWithURL(
+        folder.appendingPathComponent("matrix-heartbeat-response.gif") as CFURL,
+        UTType.gif.identifier as CFString,heartFrames,nil)!
+    CGImageDestinationSetProperties(heartDestination,[kCGImagePropertyGIFDictionary:
+        [kCGImagePropertyGIFLoopCount:0]] as CFDictionary)
+    var heartClocks = [MatrixHoleInteraction](repeating:MatrixHoleInteraction(),count:3)
+    var rainClocks = [NotchFlameAnimation](repeating:NotchFlameAnimation(),count:3)
+    for i in 0..<3 {
+        rainClocks[i].setSpeed(heartRates[i])
+        for _ in 0..<240 {
+            rainClocks[i].advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:rainClocks[i].heat))
+        }
+    }
+    for _ in 0..<heartFrames {
+        let response = try flameReviewImage(width:sampleWidth*3,height:sampleHeight+64,scale:1) { context in
+            flameText("tok/s 越快，中心心跳越频繁",at:CGPoint(x:24,y:12),size:19,color:.white)
+            flameText("独立模拟输入 · 洞内荧光随实际代码进入短暂亮起",at:CGPoint(x:24,y:39),size:10,color:.lightGray)
+            for i in 0..<3 {
+                rainClocks[i].advance(by:1/50,flow:MatrixCodeFlow.motionMultiplier(heat:rainClocks[i].heat))
+                heartClocks[i].advance(by:1/50,hovered:false,reduceMotion:false,heat:rainClocks[i].heat)
+                let image = try renderer.image(geometry:geometry,time:rainClocks[i].phase,speed:heartRates[i],scale:4,
+                    matrixConfiguration:floatingConfiguration,matrixHeartbeatTime:heartClocks[i].elapsed)
+                let period = MatrixHoleInteraction.heartbeatPeriod/MatrixHoleInteraction.heartbeatMultiplier(heat:rainClocks[i].heat)
+                drawFlameSample(context:context,image:image,geometry:geometry,
+                    rect:CGRect(x:i*sampleWidth+12,y:64,width:sampleWidth-24,height:sampleHeight-12),
+                    background:.dark,caption:String(format:"%.0f tok/s · %.2f 秒/轮",heartRates[i],period),zoom:2)
+            }
+        }
+        CGImageDestinationAddImage(heartDestination,response,
+            [kCGImagePropertyGIFDictionary:[kCGImagePropertyGIFDelayTime:1.0/50]] as CFDictionary)
+    }
+    guard CGImageDestinationFinalize(heartDestination) else { throw NSError(domain:"EmberCat.MatrixPreview",code:6) }
     let colorComparison = try flameReviewImage(width: sampleWidth*3,height: sampleHeight+64,scale:2) { context in
         flameText("Matrix · 浅色对比与系统配色",at:CGPoint(x:24,y:16),size:20,color:.white)
         let comparisons: [(FlamePreviewBackground,NotchMatrixColorScheme,String)] = [
@@ -667,11 +766,13 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
     for _ in 0..<240 {
         animation.advance(by: 1.0 / 60, flow: MatrixCodeFlow.motionMultiplier(heat: animation.heat))
     }
+    var constantHeart = MatrixHoleInteraction()
     for _ in 0..<count {
         animation.advance(by: 1 / fps, flow: MatrixCodeFlow.motionMultiplier(heat: animation.heat))
+        constantHeart.advance(by:1/fps,hovered:false,reduceMotion:false,heat:animation.heat)
         let renderedSpeed = 180 * pow(animation.heat, 1 / 0.80)
         CGImageDestinationAddImage(destination, try frame(time: animation.phase, scale: 1,
-            speed: renderedSpeed, visibility: Float(animation.visibility)),
+            speed: renderedSpeed, visibility: Float(animation.visibility),heartbeatTime:constantHeart.elapsed),
             [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / fps]] as CFDictionary)
     }
     guard CGImageDestinationFinalize(destination) else {
@@ -692,14 +793,16 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
         loadAnimation.advance(by: 1.0 / 60,
             flow: MatrixCodeFlow.motionMultiplier(heat: loadAnimation.heat))
     }
+    var responseHeart = MatrixHoleInteraction()
     for rate in responseRates {
         loadAnimation.setSpeed(rate)
         for _ in 0..<framesPerStage {
             loadAnimation.advance(by: 1 / fps,
                 flow: MatrixCodeFlow.motionMultiplier(heat: loadAnimation.heat))
+            responseHeart.advance(by:1/fps,hovered:false,reduceMotion:false,heat:loadAnimation.heat)
             let renderedSpeed = 180 * pow(loadAnimation.heat, 1 / 0.80)
             CGImageDestinationAddImage(response, try frame(time: loadAnimation.phase, scale: 1,
-                speed: renderedSpeed, inputSpeed: rate, visibility: Float(loadAnimation.visibility)),
+                speed: renderedSpeed, inputSpeed: rate, visibility: Float(loadAnimation.visibility),heartbeatTime:responseHeart.elapsed),
                 [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1 / fps]] as CFDictionary)
         }
     }
@@ -713,14 +816,15 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
         "input": "isolated synthetic tok/s; no monitor or token records",
         "fps": fps, "frames": count, "simulatedSpeed": 90, "rates": rates,
         "previewConfiguration": ["blackHoleSize":configuration.blackHoleSize,"gravity":configuration.gravity,
-            "density":configuration.density,"verticalOffset":configuration.verticalOffset],
+            "density":configuration.density,"verticalOffset":configuration.verticalOffset,
+            "heartSize":configuration.heartSize,"rimWidth":configuration.rimWidth],
         "parameters": NotchMatrixParameter.allCases.map { parameter -> [String: Any] in
             ["key": parameter.rawValue, "title": parameter.title,
                 "minimum": parameter.range.lowerBound, "maximum": parameter.range.upperBound,
                 "default": NotchMatrixConfiguration.standard[keyPath: parameter.keyPath]]
         },
         "parameterComparison": "matrix-parameters.png; same seed, phase and simulated speed; other parameters at their defaults",
-        "appearance": "live overlay follows effective macOS appearance without a separate preference; dark uses fluorescent green, light uses crisp deep teal-green outside the shadow; the black core retains luminous code",
+        "appearance": "live overlay follows effective macOS appearance; dark uses fluorescent green, light uses deep teal-green; the dark core has only a breathing center, with no surface glyphs",
         "appearanceComparison": "matrix-appearance-comparison.png; previous green on white, new light palette on white, and unchanged dark palette at the same phase",
         "interactiveDraft": "bash scripts/export-matrix-draft.sh --interactive; isolated EmberCat.MatrixInteractiveDraft preferences",
         "loadResponse": ["file": "matrix-load-response.gif", "simulatedRates": responseRates,
@@ -733,10 +837,17 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
         "notchInteraction": "upright rain starts at the real rounded edge; only the actual hole intersection excludes sources; four inward capture streams follow the movable center, without independent lateral flows",
         "holePosition": "0 pt places the center on the notch bottom for half immersion; up to 64 pt downward; source coverage, attraction, local residue, glow and final capture follow the hole",
         "positionComparison": "matrix-distance-comparison.png; selected preview size, gravity and density at half immersion, just detached and 64 pt downward",
-        "absorption": "foreground characters drain fully inside the actual shadow before retirement, without lifetime fading; only the independent background rain fades lower down",
+        "absorption": "incoming characters disappear at the physical silhouette; internal capture paths remain hidden until retirement; independent background rain fades lower down",
+        "holeFeedback": ["surfaceCodeHidden":true,"heartbeatBasePeriodSeconds":MatrixHoleInteraction.heartbeatPeriod,
+            "heartbeatClock":"phase accumulates with smoothed tok/s; faster output produces more frequent double beats; frozen with reduced motion",
+            "heartbeatComparison":"matrix-heartbeat-response.gif; simultaneous 20, 90 and 180 tok/s; 8 seconds at 50 fps",
+            "captureLight":"brief glyph-linked fluorescent spots only after crossing the physical shadow; 0.20 phase seconds; bounded to 12 dim spots",
+            "hover":"pointer polling through click-through panels; local soft fade in and out; no global event monitors",
+            "preview":"matrix-interaction.gif; simulated hover at 2.4–4.7 seconds; hole detached to reveal the complete breathing center",
+            "frames":interactionFrames,"fps":interactionFPS],
         "backgroundRain": "30 percent of existing emissions are reassigned to dimmer, smaller, slower vertical rain; their trajectories ignore hole controls, composite behind captured glyphs and the dark core, and fade lower down",
         "shadowLight": "faint fluorescent-green self-emission on the exposed shadow edge, soft within 6 points outside it; the center remains dark; the notch rim meets the two sides of the opening",
-        "foregroundCode": "incoming near-side characters remain visible in front of the shadow until the whole glyph reaches the central drain",
+        "foregroundCode": "code stays outside the hole; no front-layer exception draws on its surface or reveals captured code on hover",
         "loadBehavior": "smoothed tok/s fades extra wall columns in place and advances continuous motion faster; existing characters and paths do not relocate",
         "pulseAppearance": "separate upright characters and character-shaped glow only; no twisting strip mesh, backing, rails or plasma surface",
         "diskPlane": [plane.x,plane.y,plane.z,plane.w],

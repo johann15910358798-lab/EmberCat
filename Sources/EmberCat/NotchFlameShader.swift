@@ -18,6 +18,7 @@ enum NotchFlameShader {
         float4 flameColor;
         float4 style;
         float4 motion;
+        float4 matrixInteraction; // hover amount, heartbeat intensity, heart radius, rim width
     };
     struct Vertex { float4 position [[position]]; float2 uv; };
 

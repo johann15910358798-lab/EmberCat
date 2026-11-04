@@ -1,4 +1,4 @@
-// Vertical rain drains into a movable shadow; only local glyphs form its residue.
+// Vertical rain disappears at the movable shadow, with a breathing core and cursor feedback.
 enum NotchMatrixShader {
     static let source = #"""
 
@@ -10,7 +10,8 @@ enum NotchMatrixShader {
     }
 
     fragment float4 matrixFragment(Vertex in [[stage_in]], constant Uniforms &u [[buffer(0)]],
-        constant float4 *ports [[buffer(1)]], constant float4 &hole [[buffer(2)]]) {
+        constant float4 *ports [[buffer(1)]], constant float4 &hole [[buffer(2)]],
+        constant float4 *flashes [[buffer(3)]]) {
         if (u.visibility < .0001) return float4(0.0);
         float2 p = in.uv*u.viewport;
         float2 edge = rim(p,u);
@@ -46,21 +47,42 @@ enum NotchMatrixShader {
         float stroke = 1.0-smoothstep(1.15-aa,1.15+aa,n);
         result = over(mix(green,mint,saturate(.08+.78*rimLight+.50*portLight)),stroke*.70*rimWeight,result);
 
-        // The accretion material remains glyph-only. The shadow itself emits a
-        // faint, soft green light, confined to its exposed edge rather than a line.
-        float core = 1.0-smoothstep(radius-aa,radius+aa,distance);
-        result = over(black,core,result);
+        // Cursor feedback belongs to this local layer, leaving the notch and
+        // distant rain intact. Feathering softens the edge as the hole fades.
+        float hover = u.matrixInteraction.x;
+        float feather = mix(aa,3.4,hover);
+        float core = 1.0-smoothstep(radius-feather,radius+feather,distance);
+        float4 shadow = over(black,core,float4(0.0));
         float angle = atan2(relative.y,relative.x);
         float exposed = smoothstep(.25,2.0,below);
         float lightWeight = (.74+.26*cos(angle+.60))
             *(.96+.04*sin(u.time*.45+angle*2.0))*exposed;
-        float glowWidth = clamp(radius*.15,1.15,3.0);
+        float glowWidth = clamp(radius*.12,.95,2.5)*u.matrixInteraction.w;
         float innerLight = exp(-pow((distance-radius+glowWidth*.58)/glowWidth,2.0))*core
             *(.28+.02*sqrt(saturate(u.heat)));
         float outerDistance = max(0.0,distance-radius);
         float outerLight = exp(-pow(outerDistance/glowWidth,2.0))*(1.0-core)*.10
-            *(1.0-smoothstep(4.5,6.0,outerDistance));
-        result = over(float3(.035,1.0,.29),(innerLight+outerLight)*lightWeight,result);
+            *(1.0-smoothstep(3.75*u.matrixInteraction.w,5.0*u.matrixInteraction.w,outerDistance));
+        shadow = over(float3(.035,1.0,.29),(innerLight+outerLight)*lightWeight,shadow);
+        // The integrated heart phase speeds up with smoothed tok/s without resets.
+        float beat = u.matrixInteraction.y;
+        float heartScale = u.matrixInteraction.z;
+        float heartRadius = max(2.0,radius*(.14+.038*beat))*heartScale;
+        float heart = exp(-pow(distance/heartRadius,2.0))*(.07+.23*beat);
+        heart += exp(-pow(distance/(radius*.40*heartScale),2.0))*(.025+.060*beat);
+        heart *= core*(1.0-smoothstep(radius*min(.52*heartScale,.72),radius*min(.72*heartScale,.90),distance));
+        shadow = over(float3(.06,.95,.35),heart,shadow);
+        // Each brief fluorescent spot starts inside a real glyph entry point.
+        // Saturating the sum keeps simultaneous arrivals from becoming a bright ring.
+        float captureLight = 0.0;
+        for (uint i=0;i<uint(u.motion.w);++i) {
+            float d = length(p-flashes[i].xy)/max(.5,flashes[i].w);
+            captureLight += exp(-d*d*1.5)*flashes[i].z;
+        }
+        captureLight = min(.26,captureLight)*core*(1.0-smoothstep(radius-.25,radius,distance));
+        shadow = over(float3(.16,1.0,.48),captureLight,shadow);
+        shadow *= mix(1.0,.12,hover);
+        result = shadow+result*(1.0-shadow.a);
         result.rgb = result.rgb*outside+black*(1.0-outside)*u.drawsAnchor;
         result.a = result.a*outside+(1.0-outside)*u.drawsAnchor;
         return result*u.visibility;
@@ -83,30 +105,20 @@ enum NotchMatrixShader {
     }
 
     fragment float4 matrixPulseFragment(MatrixPulseVarying in [[stage_in]], constant Uniforms &u [[buffer(0)]],
-        constant float4 &hole [[buffer(2)]], constant float4 &plane [[buffer(3)]],
+        constant float4 &hole [[buffer(2)]],
         texture2d<float> atlas [[texture(1)]]) {
         float x = in.point.x-u.notchOrigin.x;
         float y = in.point.y-u.notchSize.y;
         float2 relative = in.point-hole.xy;
         float shadowDistance = length(relative);
         bool background = in.material.z < 0.0;
-        // Light desktops need ink, while code crossing the black core keeps its
-        // luminous palette. Depth and capture masks are independent of appearance.
+        // Light desktops need ink. Capture masks stay independent of appearance.
         float lightBackdrop = u.motion.z*smoothstep(hole.z-.5,hole.z+1.5,shadowDistance);
-        float planeX = in.point.x-plane.x;
-        float2 disk = float2(planeX,(in.point.y-plane.y-planeX*plane.w)/plane.z);
-        float foreground = smoothstep(-1.0,1.0,disk.y);
-        float shadow = mix(smoothstep(hole.z-.25,hole.z+1.25,shadowDistance),1.0,foreground);
-        // Near-side code passes in front of the shadow before draining into it.
-        // Outside the real shadow the physical mask always wins, so a projected
-        // ellipse can never erase arriving code early. The center clearance also
-        // hides the whole final glyph, not just its center.
-        float physicalCapture = smoothstep(hole.z*.90,hole.z,shadowDistance);
-        float drainRadius = max(5.0,hole.z*.28);
-        float frontCode = foreground*smoothstep(drainRadius,drainRadius+2.8,length(disk));
-        float capture = max(physicalCapture,frontCode);
+        // Absorption happens at the real silhouette. No foreground exception
+        // paints glyphs back onto the dark surface or reveals them while hovering.
         float outsideNotch = smoothstep(0.0,.8,rim(in.point,u).y);
-        float occlusion = background ? smoothstep(hole.z+.25,hole.z+1.25,shadowDistance) : shadow*capture;
+        float occlusion = background ? smoothstep(hole.z+.25,hole.z+1.25,shadowDistance)
+            : smoothstep(hole.z-.35,hole.z+.65,shadowDistance);
         float mask = smoothstep(0.0,.8,min(x,u.notchSize.x-x))*outsideNotch
             *(1.0-smoothstep(102.0,111.0,y))*occlusion;
         float envelope = smoothstep(0.0,.16,in.material.y)*(.40+.60*sqrt(saturate(in.material.y)));
@@ -116,10 +128,11 @@ enum NotchMatrixShader {
         float edgeLight = (1.0-smoothstep(hole.z+1.2,hole.z+9.0,shadowDistance))
             *smoothstep(hole.z*.91,hole.z+.60,shadowDistance);
         edgeLight *= .72+.28*smoothstep(-hole.z,hole.z,relative.x);
-        edgeLight = max(edgeLight,frontCode*(1.0-physicalCapture)*.65);
         if (background) edgeLight = 0.0;
         alpha = saturate(alpha*(1.0+1.35*edgeLight)
             *mix(1.0,background ? 2.4 : 1.35,lightBackdrop));
+        float hover = u.matrixInteraction.x*(1.0-smoothstep(hole.z+3.0,hole.z+13.0,shadowDistance));
+        alpha *= mix(1.0,.20,hover);
         if (alpha < .001) return float4(0.0);
         float drift = (hash(in.material.w*9.7)-.5)*.08;
         float2 local = float2((in.uv.y+1.0)*.5+drift,in.uv.x);

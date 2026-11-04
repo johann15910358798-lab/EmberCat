@@ -17,17 +17,21 @@ struct NotchMatrixConfiguration: Codable, Equatable {
     var gravity: Double = 1.8
     var density: Double = 2
     var verticalOffset: Double = 0
+    var heartSize: Double = 1
+    var rimWidth: Double = 1
 
     init(blackHoleSize: Double = 1.75, gravity: Double = 1.8, density: Double = 2,
-         verticalOffset: Double = 0) {
+         verticalOffset: Double = 0, heartSize: Double = 1, rimWidth: Double = 1) {
         self.blackHoleSize = blackHoleSize
         self.gravity = gravity
         self.density = density
         self.verticalOffset = verticalOffset
+        self.heartSize = heartSize
+        self.rimWidth = rimWidth
     }
 
     private enum CodingKeys: String, CodingKey {
-        case blackHoleSize, gravity, density, verticalOffset
+        case blackHoleSize, gravity, density, verticalOffset, heartSize, rimWidth
     }
 
     init(from decoder: Decoder) throws {
@@ -35,7 +39,9 @@ struct NotchMatrixConfiguration: Codable, Equatable {
         self.init(blackHoleSize: try values.decode(Double.self, forKey: .blackHoleSize),
             gravity: try values.decode(Double.self, forKey: .gravity),
             density: try values.decode(Double.self, forKey: .density),
-            verticalOffset: try values.decodeIfPresent(Double.self, forKey: .verticalOffset) ?? 0)
+            verticalOffset: try values.decodeIfPresent(Double.self, forKey: .verticalOffset) ?? 0,
+            heartSize: try values.decodeIfPresent(Double.self, forKey: .heartSize) ?? 1,
+            rimWidth: try values.decodeIfPresent(Double.self, forKey: .rimWidth) ?? 1)
     }
 
     var validationError: String? {
@@ -50,7 +56,7 @@ struct NotchMatrixConfiguration: Codable, Equatable {
 }
 
 enum NotchMatrixParameter: String, CaseIterable {
-    case blackHoleSize, gravity, density, verticalOffset
+    case blackHoleSize, gravity, density, verticalOffset, heartSize, rimWidth
 
     var title: String {
         switch self {
@@ -58,6 +64,8 @@ enum NotchMatrixParameter: String, CaseIterable {
         case .gravity: "引力强度"
         case .density: "代码密度"
         case .verticalOffset: "与刘海距离"
+        case .heartSize: "中心光范围"
+        case .rimWidth: "洞缘光宽"
         }
     }
 
@@ -67,6 +75,8 @@ enum NotchMatrixParameter: String, CaseIterable {
         case .gravity: 0.5...3
         case .density: 0.4...3
         case .verticalOffset: 0...64
+        case .heartSize: 0.5...2
+        case .rimWidth: 0.4...1.8
         }
     }
 
@@ -76,6 +86,8 @@ enum NotchMatrixParameter: String, CaseIterable {
         case .gravity: \.gravity
         case .density: \.density
         case .verticalOffset: \.verticalOffset
+        case .heartSize: \.heartSize
+        case .rimWidth: \.rimWidth
         }
     }
 
@@ -91,6 +103,8 @@ enum NotchMatrixParameter: String, CaseIterable {
         case .gravity: "越强越早汇聚吸入；远处保留竖直掉落。"
         case .density: "调节代码数量，仍随 tok/s 增减；不改变已有字符的路径。"
         case .verticalOffset: "0 为半嵌入；向下拉可完全脱离刘海，代码仍会吸入。"
+        case .heartSize: "扩大或缩小中心呼吸光；心跳随 tok/s 加快。"
+        case .rimWidth: "收窄或放宽洞缘光晕；100% 为当前微光宽度。"
         }
     }
 }

@@ -1,5 +1,40 @@
 import Foundation
 
+/// Accumulate the load-driven heart phase so changing speed never restarts a beat.
+struct MatrixHoleInteraction {
+    static let heartbeatPeriod = 2.8
+    private(set) var elapsed: Double = 0
+    private(set) var hover: Double = 0
+
+    static func heartbeatMultiplier(heat: Double) -> Double {
+        let load = heat.isFinite ? min(1,max(0,heat)) : 0
+        return 0.60+2.20*load
+    }
+
+    static func heartbeat(at time: Double) -> Double {
+        guard time.isFinite else { return 0.2 }
+        let phase = max(0,time).truncatingRemainder(dividingBy:heartbeatPeriod)/heartbeatPeriod
+        let breath = 0.5-0.5*cos(phase*Double.pi*2)
+        let first = exp(-pow((phase-0.26)/0.065,2))
+        let second = exp(-pow((phase-0.40)/0.085,2))
+        return min(1,0.12+0.22*breath+0.52*first+0.28*second)
+    }
+
+    mutating func advance(by delta: Double, hovered: Bool, reduceMotion: Bool, heat: Double = 0) {
+        guard delta.isFinite,delta >= 0 else { return }
+        let step = min(0.1,delta)
+        let target = hovered ? 1.0 : 0.0
+        if reduceMotion { hover = target }
+        else {
+            elapsed += step*Self.heartbeatMultiplier(heat:heat)
+            hover += (target-hover)*(1-exp(-step/(hovered ? 0.14 : 0.24)))
+            if abs(target-hover) < 0.001 { hover = target }
+        }
+    }
+
+    mutating func reset() { self = Self() }
+}
+
 enum MatrixFlowPass: String, CaseIterable {
     case composed, background, falling, gathering, orbiting, aperture
 }
@@ -57,9 +92,19 @@ struct MatrixPortPulse: Equatable {
     var uniform: SIMD4<Float> { SIMD4(x,intensity,radius,0) }
 }
 
+struct MatrixCaptureFlash: Equatable {
+    let id: UInt64
+    let center: SIMD2<Float>
+    let intensity: Float
+    let radius: Float
+    let progress: Float
+    var uniform: SIMD4<Float> { SIMD4(center.x,center.y,intensity,radius) }
+}
+
 struct MatrixFlowFrame {
     var pulses: [MatrixPulse] = []
     var ports: [MatrixPortPulse] = []
+    var flashes: [MatrixCaptureFlash] = []
     var vertices: [MatrixPulseVertex] {
         var background: [MatrixPulseVertex] = [],foreground: [MatrixPulseVertex] = []
         for pulse in pulses {
@@ -81,6 +126,8 @@ enum MatrixCodeFlow {
     static let gatheringBundles = 4
     static let maximumPulses = sourceColumns
     static let maximumPorts = maximumPulses
+    static let maximumFlashes = 12
+    static let captureFlashDuration = 0.20
     static let pulseSegments = 384
     static let maximumVertices = maximumPulses*pulseSegments*6
     static let maximumInlineVertices = 120
@@ -125,6 +172,8 @@ enum MatrixCodeFlow {
         guard pass != .aperture,heat.isFinite,heat > 0,time.isFinite,width.isFinite,width > 0,
               geometry.notchHeight.isFinite,configuration.validationError == nil else { return MatrixFlowFrame() }
         let fit = min(1.12,width/180)
+        let aperture = horizon(geometry:geometry,configuration:configuration)
+        let sink = SIMD2(Double(aperture.x),Double(aperture.y))
         let budget = 4+Double(maximumPulses-4)*pow(Double(min(1,heat)),0.92)
         var result = MatrixFlowFrame()
         for slot in 0..<maximumPulses {
@@ -136,6 +185,8 @@ enum MatrixCodeFlow {
             let direct = makePath(geometry:geometry,configuration:configuration,column:column,seed:lane,lingering:false)
             let lingering = makePath(geometry:geometry,configuration:configuration,column:column,seed:lane,lingering:true)
             let background = makeBackgroundPath(geometry:geometry,column:column,seed:lane)
+            let directCapture = direct.captureClock(center:sink,radius:Double(aperture.z)*0.96)
+            let lingeringCapture = lingering.captureClock(center:sink,radius:Double(aperture.z)*0.96)
             let gap = 0.22+random(lane,12)*0.04
             let clock = max(0,time)+random(lane,15)*71
             let newest = floor(clock/(gap*0.25))+2
@@ -162,9 +213,27 @@ enum MatrixCodeFlow {
                 let age = clock-emission*gap*0.25-(random(event,18)-0.5)*gap*0.60
                 // Reassign part of the existing rain; do not add another full-density wall.
                 let ambient = random(event,33) < 0.30
-                let path = ambient ? background : random(event,17) < 0.12 ? lingering : direct
+                let lingers = random(event,17) < 0.12
+                let path = ambient ? background : lingers ? lingering : direct
                 guard age >= 0,age < path.duration else { continue }
                 let point = path.at(clock:age)
+                if !ambient,pass == .composed {
+                    if let captureClock = lingers ? lingeringCapture : directCapture {
+                        // The flash follows the same birth and path as its glyph.
+                        // It begins only after entry and dies before code can orbit on the surface.
+                        let progress = (age-captureClock)/Self.captureFlashDuration
+                        if progress >= 0 && progress < 1 {
+                            let entry = path.at(clock:captureClock).position
+                            let center = sink+(entry-sink)*0.95
+                            let envelope = sin(Double.pi*progress)*pow(1-progress,1.5)
+                            result.flashes.append(MatrixCaptureFlash(id:event,
+                                center:SIMD2(Float(center.x),Float(center.y)),
+                                intensity:Float(envelope*density*loadOpacity*(0.12+0.07*random(event,38))),
+                                radius:Float((1.25+0.55*random(event,39))*fit*(1-0.35*progress)),
+                                progress:Float(progress)))
+                        }
+                    }
+                }
                 let orbital = point.stage == .orbiting
                 let widthScale = ambient ? 0.76 : orbital ? 0.74 : point.stage == .gathering ? 0.88 : 1
                 let width = baseWidth*widthScale*(0.87+0.13*point.rate)
@@ -191,6 +260,8 @@ enum MatrixCodeFlow {
                 sourceX:Float(direct.points[0].position.x),bundle:column/8,samples:samples))
         }
         result.pulses.sort { $0.depth == $1.depth ? $0.id < $1.id : $0.depth < $1.depth }
+        result.flashes.sort { $0.intensity == $1.intensity ? $0.id < $1.id : $0.intensity > $1.intensity }
+        result.flashes = Array(result.flashes.prefix(maximumFlashes))
         result.ports = result.pulses.compactMap { pulse in
             guard let contact = pulse.samples.filter({ $0.opacity > 0.01 && $0.stage != .background }).min(by: {
                 abs($0.center.y-Float(geometry.notchHeight)) < abs($1.center.y-Float(geometry.notchHeight))
@@ -240,6 +311,18 @@ enum MatrixCodeFlow {
             return FlowPoint(position:a.position+(b.position-a.position)*fraction,
                 rate:a.rate+(b.rate-a.rate)*fraction,speed:a.speed+(b.speed-a.speed)*fraction,
                 stage:b.stage)
+        }
+
+        func captureClock(center:SIMD2<Double>,radius:Double) -> Double? {
+            for index in 1..<points.count {
+                let a = MatrixCodeFlow.length(points[index-1].position-center)
+                let b = MatrixCodeFlow.length(points[index].position-center)
+                if a > radius && b <= radius {
+                    let fraction = (a-radius)/max(0.0001,a-b)
+                    return clocks[index-1]+(clocks[index]-clocks[index-1])*fraction
+                }
+            }
+            return nil
         }
     }
 

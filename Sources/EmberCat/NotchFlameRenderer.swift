@@ -39,6 +39,7 @@ private struct FlameUniforms {
     var flameColor: SIMD4<Float>
     var style: SIMD4<Float>
     var motion: SIMD4<Float>
+    var matrixInteraction: SIMD4<Float>
 }
 
 /// The live overlay, native previews and exports share the same GPU composition.
@@ -108,6 +109,7 @@ final class NotchFlameRenderer {
               appearance: NotchFlameAppearance = .standard,
               matrixConfiguration: NotchMatrixConfiguration = .standard,
               matrixColorScheme: NotchMatrixColorScheme = .dark,
+              matrixHover: Double = 0, matrixHeartbeatTime: Double? = nil,
               reduceMotion: Bool = false, drawable: CAMetalDrawable? = nil,
               wait: Bool = false, matrixPass: MatrixFlowPass = .composed) throws {
         guard let command = queue.makeCommandBuffer() else { throw Self.error("No command buffer") }
@@ -120,6 +122,9 @@ final class NotchFlameRenderer {
             throw Self.error("No render encoder")
         }
         let effectiveTime = reduceMotion ? 8.73 : time
+        let hover = matrixHover.isFinite ? min(1,max(0,matrixHover)) : 0
+        let heartClock = matrixHeartbeatTime ?? time*MatrixHoleInteraction.heartbeatMultiplier(heat:Double(heat))
+        let heartbeat = MatrixHoleInteraction.heartbeat(at:reduceMotion ? 0 : heartClock)
         let matrixFrame = geometry.effect == .matrix && visibility > 0.0001 && heat > 0.0001
             ? MatrixCodeFlow.frame(geometry: geometry, time: effectiveTime,
                 heat: heat, configuration: matrixConfiguration, pass: matrixPass, seed: matrixSeed)
@@ -136,14 +141,18 @@ final class NotchFlameRenderer {
             style: SIMD4(Float(appearance.brightness), Float(appearance.core),
                 Float(appearance.transparency), Float(appearance.length)),
             motion: SIMD4(Float(appearance.turbulence), Float(matrixFrame.ports.count),
-                matrixColorScheme == .light ? 1 : 0, 0))
+                matrixColorScheme == .light ? 1 : 0,Float(matrixFrame.flashes.count)),
+            matrixInteraction: SIMD4(Float(hover),Float(heartbeat),
+                Float(matrixConfiguration.heartSize),Float(matrixConfiguration.rimWidth)))
         encoder.setRenderPipelineState(geometry.effect == .matrix ? matrixPipeline : pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlameUniforms>.stride, index: 0)
         if geometry.effect == .matrix {
             var horizon = MatrixCodeFlow.horizon(geometry: geometry, configuration: matrixConfiguration)
             encoder.setFragmentBytes(&horizon, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
-            var diskPlane = MatrixCodeFlow.diskPlane(geometry: geometry, configuration: matrixConfiguration)
-            encoder.setFragmentBytes(&diskPlane, length: MemoryLayout<SIMD4<Float>>.stride, index: 3)
+            let flashes = matrixFrame.flashes.isEmpty ? [SIMD4<Float>.zero] : matrixFrame.flashes.map(\.uniform)
+            flashes.withUnsafeBufferPointer { buffer in
+                encoder.setFragmentBytes(buffer.baseAddress!,length:buffer.count*MemoryLayout<SIMD4<Float>>.stride,index:3)
+            }
             let ports = matrixFrame.ports.isEmpty ? [SIMD4<Float>.zero] : matrixFrame.ports.map(\.uniform)
             ports.withUnsafeBufferPointer { buffer in
                 encoder.setFragmentBytes(buffer.baseAddress!,
@@ -183,6 +192,7 @@ final class NotchFlameRenderer {
                color: SIMD3<Float>? = nil, appearance: NotchFlameAppearance = .standard,
                matrixConfiguration: NotchMatrixConfiguration = .standard,
                matrixColorScheme: NotchMatrixColorScheme = .dark,
+               matrixHover: Double = 0, matrixHeartbeatTime: Double? = nil,
                visibility: Float = 1,
                reduceMotion: Bool = false, matrixPass: MatrixFlowPass = .composed) throws -> CGImage {
         let width = Int((geometry.size.width * scale).rounded())
@@ -199,6 +209,7 @@ final class NotchFlameRenderer {
             heat: heat, visibility: active && heat > 0 ? visibility : 0,
             drawsAnchor: drawsAnchor, color: color ?? palette.color(for: speed),
             appearance: appearance, matrixConfiguration: matrixConfiguration, matrixColorScheme: matrixColorScheme,
+            matrixHover:matrixHover, matrixHeartbeatTime:matrixHeartbeatTime,
             reduceMotion: reduceMotion, wait: true, matrixPass: matrixPass)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         pixels.withUnsafeMutableBytes {
@@ -264,6 +275,13 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     var onRenderFailure: (() -> Void)?
     private let renderer: NotchFlameRenderer
     private var animation = NotchFlameAnimation()
+    private var holeInteraction = MatrixHoleInteraction()
+    var matrixHoverAmount: Double { holeInteraction.hover }
+    var matrixHeartbeatElapsed: Double { holeInteraction.elapsed }
+    private let mouseLocation: @MainActor () -> CGPoint
+    private let reduceMotion: @MainActor () -> Bool
+    private var reducedPointerTimer: Timer?
+    var isTrackingMatrixPointer: Bool { effect == .matrix && (isRendering || reducedPointerTimer != nil) }
     var animationPhase: Double { animation.phase }
     private var lastTime = ProcessInfo.processInfo.systemUptime
     private var accessibilityObserver: NSObjectProtocol?
@@ -286,8 +304,12 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private var frameLink: CADisplayLink?
     var isRendering: Bool { frameLink != nil }
 
-    init(geometry: NotchFlameGeometry, renderer: NotchFlameRenderer? = nil) throws {
+    init(geometry: NotchFlameGeometry, renderer: NotchFlameRenderer? = nil,
+         mouseLocation: @escaping @MainActor () -> CGPoint = { NSEvent.mouseLocation },
+         reduceMotion: @escaping @MainActor () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }) throws {
         self.geometry = geometry
+        self.mouseLocation = mouseLocation
+        self.reduceMotion = reduceMotion
         let renderer = try renderer ?? NotchFlameRenderer()
         self.renderer = renderer
         super.init(frame: CGRect(origin: .zero, size: geometry.size), device: renderer.device)
@@ -313,6 +335,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
         pauseFrames()
+        stopReducedPointerTracking()
         refreshDisplay()
         if window != nil { resumeIfNeeded() }
     }
@@ -379,7 +402,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     }
 
     private func resumeIfNeeded() {
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduced = reduceMotion()
+        updateReducedPointerTracking()
         guard animation.needsFrames(reduceMotion: reduced) else { pauseFrames(); return }
         guard frameLink == nil, window != nil else { return }
         lastTime = ProcessInfo.processInfo.systemUptime
@@ -404,8 +428,47 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         frameLink = nil
     }
 
+    /// Screen coordinates use a lower-left origin; the shader uses top-down points.
+    func matrixContainsPointer(at screenPoint: CGPoint) -> Bool {
+        guard effect == .matrix,let window,window.isVisible,!isHiddenOrHasHiddenAncestor,
+              bounds.width > 0,bounds.height > 0,screenPoint.x.isFinite,screenPoint.y.isFinite else { return false }
+        let local = convert(window.convertPoint(fromScreen:screenPoint),from:nil)
+        let x = (local.x-bounds.minX)*geometry.size.width/bounds.width
+        let y = (isFlipped ? local.y-bounds.minY : bounds.maxY-local.y)*geometry.size.height/bounds.height
+        let hole = MatrixCodeFlow.horizon(geometry:geometry,configuration:matrixConfiguration)
+        let dx = Double(x)-Double(hole.x),dy = Double(y)-Double(hole.y)
+        return y >= geometry.notchHeight && dx*dx+dy*dy <= pow(Double(hole.z)+2,2)
+    }
+
+    private func stopReducedPointerTracking() {
+        reducedPointerTimer?.invalidate()
+        reducedPointerTimer = nil
+    }
+
+    private func updateReducedPointerTracking() {
+        guard effect == .matrix,window?.isVisible == true,!animation.isHidden,
+              reduceMotion() else {
+            stopReducedPointerTracking()
+            return
+        }
+        guard reducedPointerTimer == nil else { return }
+        // Cursor polling works through a click-through panel without global event
+        // monitors. A reduced-motion surface redraws only when the hit result changes.
+        let timer = Timer(timeInterval:1.0/12,repeats:true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            MainActor.assumeIsolated {
+                let target = self.matrixContainsPointer(at:self.mouseLocation()) ? 1.0 : 0.0
+                if target != self.holeInteraction.hover { self.draw() }
+            }
+        }
+        reducedPointerTimer = timer
+        RunLoop.main.add(timer,forMode:.common)
+    }
+
     func stop() {
         pauseFrames()
+        stopReducedPointerTracking()
+        holeInteraction.reset()
         animation.reset()
         if let accessibilityObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver)
@@ -417,12 +480,21 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
 
     func draw(in view: MTKView) {
         let now = ProcessInfo.processInfo.systemUptime
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        animation.advance(by: now - lastTime, reduceMotion: reduced,
+        let reduced = reduceMotion()
+        let delta = now-lastTime
+        animation.advance(by: delta, reduceMotion: reduced,
             flow: effect == .matrix ? MatrixCodeFlow.motionMultiplier(heat: animation.heat) : flameAppearance.flow)
+        if effect == .matrix {
+            holeInteraction.advance(by:delta,hovered:matrixContainsPointer(at:mouseLocation()),
+                reduceMotion:reduced,heat:animation.heat)
+        } else { holeInteraction.reset() }
         lastTime = now
         guard let drawable = currentDrawable else {
-            if animation.isHidden { pauseFrames(); onFadeOut?() }
+            if animation.isHidden {
+                pauseFrames()
+                stopReducedPointerTracking()
+                onFadeOut?()
+            }
             return
         }
         do {
@@ -431,6 +503,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
                 visibility: Float(animation.visibility), drawsAnchor: drawsAnchor,
                 color: animation.color, appearance: flameAppearance, matrixConfiguration: matrixConfiguration,
                 matrixColorScheme: matrixColorScheme,
+                matrixHover:holeInteraction.hover,matrixHeartbeatTime:holeInteraction.elapsed,
                 reduceMotion: reduced, drawable: drawable)
             renderedFrameCount &+= 1
         } catch {
@@ -443,5 +516,6 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
             pauseFrames()
             if animation.isHidden { onFadeOut?() }
         }
+        updateReducedPointerTracking()
     }
 }
