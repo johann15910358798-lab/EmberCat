@@ -127,6 +127,8 @@ struct FlamePreviewCheck {
         try check("preview Matrix code rain")
         try require(settings.effect == .flame && flames.allSatisfy { $0.effect == .matrix },
             "Preview switches all three shaders without applying the effect to production")
+        try require(descendants(content).allSatisfy { $0.accessibilityIdentifier() != "matrix-style-heartSize" },
+            "The removed center lamp has no remaining slider in the product")
         try require(flames.map(\.matrixColorSchemeOverride) == [.dark,.light,nil],
             "Dark and white samples preview their respective palettes; multicolor follows macOS")
         let inheritedAppearance = window.appearance
@@ -157,6 +159,18 @@ struct FlamePreviewCheck {
         }
         var matrixDraft = savedMatrix
         let matrixSpeed = slider.doubleValue
+        var liveSizeResponse = [[String:Any]]()
+        for rate in [20.0,90,180] {
+            slider.doubleValue = rate
+            act(slider)
+            pump(1.8)
+            liveSizeResponse.append(["tokPerSecond":rate,"radiusPoints":flames[0].matrixHorizon.z])
+        }
+        let liveRadii = liveSizeResponse.map { $0["radiusPoints"] as! Float }
+        try require(liveRadii[1] > liveRadii[0]*1.15 && liveRadii[2] > liveRadii[1]*1.12,
+            "All preview controls drive the live automatic body size at slow, medium and fast tok/s")
+        slider.doubleValue = matrixSpeed
+        act(slider)
         for (index, parameter) in NotchMatrixParameter.allCases.enumerated() {
             let knob = matrixSliders[index]
             try require(!knob.isHiddenOrHasHiddenAncestor
@@ -306,6 +320,7 @@ struct FlamePreviewCheck {
             "matrixControls": ["threeBackgrounds": true, "phasePreserved": true,
                 "unsavedDraftIsolated": true, "saveReloadReset": true, "modeSwitchPreservesDraft": true],
             "macOSAppearance":themeObservations,
+            "automaticBodySize":liveSizeResponse,
             "isolatedInteractiveWindow": ["saveLabel": isolatedSave.title,
                 "separatePreferences": true, "launchConfigurationIsolated":true,
                 "distanceDefaultLabel":distanceValue.stringValue,"closeStopsRendering": true],

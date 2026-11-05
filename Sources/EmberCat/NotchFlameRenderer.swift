@@ -50,8 +50,11 @@ final class NotchFlameRenderer {
     private let pipeline: MTLRenderPipelineState
     private let matrixPipeline: MTLRenderPipelineState
     private let matrixPulsePipeline: MTLRenderPipelineState
+    private let matrixMatterPipeline: MTLRenderPipelineState
+    private let matrixOrbitPipeline: MTLRenderPipelineState
     private let noise: MTLTexture
     private let glyphs: MTLTexture
+    private let matrixMatter: MTLTexture
     private let matrixSeed: UInt64
 
     init(matrixSeed: UInt64 = MatrixCodeFlow.sessionSeed) throws {
@@ -85,6 +88,14 @@ final class NotchFlameRenderer {
                 withBytes: $0.baseAddress!, bytesPerRow: 128 * 4)
         }
         glyphs = try Self.makeGlyphAtlas(device: device)
+        let matterDescriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat:.rgba16Float,
+            width:1024,height:256,mipmapped:false)
+        matterDescriptor.usage = [.renderTarget,.shaderRead]
+        matterDescriptor.storageMode = .private
+        guard let matrixMatter = device.makeTexture(descriptor:matterDescriptor) else {
+            throw Self.error("Could not allocate captured code texture")
+        }
+        self.matrixMatter = matrixMatter
         let library = try device.makeLibrary(source: NotchFlameShader.source + NotchMatrixShader.source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "flameVertex")
@@ -92,6 +103,11 @@ final class NotchFlameRenderer {
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
         descriptor.fragmentFunction = library.makeFunction(name: "matrixFragment")
+        descriptor.colorAttachments[0].isBlendingEnabled = true
+        descriptor.colorAttachments[0].sourceRGBBlendFactor = .one
+        descriptor.colorAttachments[0].destinationRGBBlendFactor = .oneMinusSourceAlpha
+        descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
+        descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         matrixPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
         descriptor.vertexFunction = library.makeFunction(name: "matrixPulseVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "matrixPulseFragment")
@@ -101,6 +117,14 @@ final class NotchFlameRenderer {
         descriptor.colorAttachments[0].sourceAlphaBlendFactor = .one
         descriptor.colorAttachments[0].destinationAlphaBlendFactor = .oneMinusSourceAlpha
         matrixPulsePipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.fragmentFunction = library.makeFunction(name:"matrixOrbitGlyphFragment")
+        matrixOrbitPipeline = try device.makeRenderPipelineState(descriptor:descriptor)
+        descriptor.vertexFunction = library.makeFunction(name:"matrixMatterVertex")
+        descriptor.fragmentFunction = library.makeFunction(name:"matrixMatterFragment")
+        descriptor.colorAttachments[0].pixelFormat = .rgba16Float
+        descriptor.colorAttachments[0].destinationRGBBlendFactor = .one
+        descriptor.colorAttachments[0].destinationAlphaBlendFactor = .one
+        matrixMatterPipeline = try device.makeRenderPipelineState(descriptor:descriptor)
     }
 
     func draw(texture: MTLTexture, geometry: NotchFlameGeometry, time: Double,
@@ -109,25 +133,17 @@ final class NotchFlameRenderer {
               appearance: NotchFlameAppearance = .standard,
               matrixConfiguration: NotchMatrixConfiguration = .standard,
               matrixColorScheme: NotchMatrixColorScheme = .dark,
-              matrixHover: Double = 0, matrixHeartbeatTime: Double? = nil,
+              matrixHover: Double = 0, matrixBreathingTime: Double? = nil,
               reduceMotion: Bool = false, drawable: CAMetalDrawable? = nil,
               wait: Bool = false, matrixPass: MatrixFlowPass = .composed) throws {
         guard let command = queue.makeCommandBuffer() else { throw Self.error("No command buffer") }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = texture
-        pass.colorAttachments[0].loadAction = .clear
-        pass.colorAttachments[0].storeAction = .store
-        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 0)
-        guard let encoder = command.makeRenderCommandEncoder(descriptor: pass) else {
-            throw Self.error("No render encoder")
-        }
         let effectiveTime = reduceMotion ? 8.73 : time
         let hover = matrixHover.isFinite ? min(1,max(0,matrixHover)) : 0
-        let heartClock = matrixHeartbeatTime ?? time*MatrixHoleInteraction.heartbeatMultiplier(heat:Double(heat))
-        let heartbeat = MatrixHoleInteraction.heartbeat(at:reduceMotion ? 0 : heartClock)
+        let radiusScale = MatrixHoleInteraction.radiusScale(heat:Double(heat),
+            time:matrixBreathingTime ?? time,reduceMotion:reduceMotion)
         let matrixFrame = geometry.effect == .matrix && visibility > 0.0001 && heat > 0.0001
             ? MatrixCodeFlow.frame(geometry: geometry, time: effectiveTime,
-                heat: heat, configuration: matrixConfiguration, pass: matrixPass, seed: matrixSeed)
+                heat: heat, configuration: matrixConfiguration,radiusScale:radiusScale,pass: matrixPass, seed: matrixSeed)
             : MatrixFlowFrame()
         var uniforms = FlameUniforms(
             viewport: SIMD2(Float(geometry.size.width), Float(geometry.size.height)),
@@ -142,12 +158,22 @@ final class NotchFlameRenderer {
                 Float(appearance.transparency), Float(appearance.length)),
             motion: SIMD4(Float(appearance.turbulence), Float(matrixFrame.ports.count),
                 matrixColorScheme == .light ? 1 : 0,Float(matrixFrame.flashes.count)),
-            matrixInteraction: SIMD4(Float(hover),Float(heartbeat),
-                Float(matrixConfiguration.heartSize),Float(matrixConfiguration.rimWidth)))
+            matrixInteraction: SIMD4(Float(hover),0,0,Float(matrixConfiguration.rimWidth)))
+        if geometry.effect == .matrix {
+            try encodeMatrixMatter(command:command,frame:matrixFrame,configuration:matrixConfiguration)
+        }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = texture
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
+        guard let encoder = command.makeRenderCommandEncoder(descriptor:pass) else {
+            throw Self.error("No render encoder")
+        }
         encoder.setRenderPipelineState(geometry.effect == .matrix ? matrixPipeline : pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlameUniforms>.stride, index: 0)
         if geometry.effect == .matrix {
-            var horizon = MatrixCodeFlow.horizon(geometry: geometry, configuration: matrixConfiguration)
+            var horizon = MatrixCodeFlow.horizon(geometry: geometry, configuration: matrixConfiguration,radiusScale:radiusScale)
             encoder.setFragmentBytes(&horizon, length: MemoryLayout<SIMD4<Float>>.stride, index: 2)
             let flashes = matrixFrame.flashes.isEmpty ? [SIMD4<Float>.zero] : matrixFrame.flashes.map(\.uniform)
             flashes.withUnsafeBufferPointer { buffer in
@@ -161,7 +187,10 @@ final class NotchFlameRenderer {
         }
         encoder.setFragmentTexture(noise, index: 0)
         encoder.setFragmentTexture(glyphs, index: 1)
-        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.setFragmentTexture(matrixMatter,index:2)
+        if geometry.effect != .matrix {
+            encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        }
         if geometry.effect == .matrix, visibility > 0.0001, heat > 0.0001 {
             let vertices = matrixFrame.vertices
             if !vertices.isEmpty {
@@ -177,6 +206,25 @@ final class NotchFlameRenderer {
                 }
             }
         }
+        if geometry.effect == .matrix {
+            // The luminous disk covers approaching code at its actual crossings.
+            // Capture masks still hide glyphs when hover makes the core transparent.
+            encoder.setRenderPipelineState(matrixPipeline)
+            encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:3)
+            let diskGlyphs = matrixFrame.diskMatter.flatMap(\.glyphVertices)
+            if !diskGlyphs.isEmpty {
+                encoder.setRenderPipelineState(matrixOrbitPipeline)
+                encoder.setVertexBytes(&uniforms,length:MemoryLayout<FlameUniforms>.stride,index:0)
+                diskGlyphs.withUnsafeBufferPointer { buffer in
+                    for start in stride(from:0,to:buffer.count,by:MatrixCodeFlow.maximumInlineVertices) {
+                        let count = min(MatrixCodeFlow.maximumInlineVertices,buffer.count-start)
+                        encoder.setVertexBytes(buffer.baseAddress!.advanced(by:start),
+                            length:count*MemoryLayout<MatrixPulseVertex>.stride,index:1)
+                        encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:count)
+                    }
+                }
+            }
+        }
         encoder.endEncoding()
         if let drawable { command.present(drawable) }
         command.commit()
@@ -186,13 +234,40 @@ final class NotchFlameRenderer {
         }
     }
 
+    private func encodeMatrixMatter(command:MTLCommandBuffer,frame:MatrixFlowFrame,
+                                    configuration:NotchMatrixConfiguration) throws {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = matrixMatter
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0,0,0,0)
+        guard let encoder = command.makeRenderCommandEncoder(descriptor:pass) else {
+            throw Self.error("No captured code encoder")
+        }
+        encoder.setRenderPipelineState(matrixMatterPipeline)
+        encoder.setFragmentTexture(glyphs,index:1)
+        let outer = MatrixAccretionGeometry.outer(width:configuration.rimWidth)
+        let vertices = frame.diskMatter.flatMap { $0.vertices(outer:outer) }
+        if !vertices.isEmpty {
+            vertices.withUnsafeBufferPointer { buffer in
+                for start in stride(from:0,to:buffer.count,by:MatrixCodeFlow.maximumInlineVertices) {
+                    let count = min(MatrixCodeFlow.maximumInlineVertices,buffer.count-start)
+                    encoder.setVertexBytes(buffer.baseAddress!.advanced(by:start),
+                        length:count*MemoryLayout<MatrixPulseVertex>.stride,index:1)
+                    encoder.drawPrimitives(type:.triangle,vertexStart:0,vertexCount:count)
+                }
+            }
+        }
+        encoder.endEncoding()
+    }
+
     func image(geometry: NotchFlameGeometry, time: Double, speed: Double,
                scale: CGFloat = 2, active: Bool = true, drawsAnchor: Bool = false,
                palette: NotchFlamePalette = .standard,
                color: SIMD3<Float>? = nil, appearance: NotchFlameAppearance = .standard,
                matrixConfiguration: NotchMatrixConfiguration = .standard,
                matrixColorScheme: NotchMatrixColorScheme = .dark,
-               matrixHover: Double = 0, matrixHeartbeatTime: Double? = nil,
+               matrixHover: Double = 0, matrixBreathingTime: Double? = nil,
                visibility: Float = 1,
                reduceMotion: Bool = false, matrixPass: MatrixFlowPass = .composed) throws -> CGImage {
         let width = Int((geometry.size.width * scale).rounded())
@@ -209,7 +284,7 @@ final class NotchFlameRenderer {
             heat: heat, visibility: active && heat > 0 ? visibility : 0,
             drawsAnchor: drawsAnchor, color: color ?? palette.color(for: speed),
             appearance: appearance, matrixConfiguration: matrixConfiguration, matrixColorScheme: matrixColorScheme,
-            matrixHover:matrixHover, matrixHeartbeatTime:matrixHeartbeatTime,
+            matrixHover:matrixHover, matrixBreathingTime:matrixBreathingTime,
             reduceMotion: reduceMotion, wait: true, matrixPass: matrixPass)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         pixels.withUnsafeMutableBytes {
@@ -277,7 +352,13 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private var animation = NotchFlameAnimation()
     private var holeInteraction = MatrixHoleInteraction()
     var matrixHoverAmount: Double { holeInteraction.hover }
-    var matrixHeartbeatElapsed: Double { holeInteraction.elapsed }
+    var matrixBreathingElapsed: Double { holeInteraction.elapsed }
+    var matrixRadiusScale: Double {
+        MatrixHoleInteraction.radiusScale(heat:animation.heat,time:holeInteraction.elapsed,reduceMotion:reduceMotion())
+    }
+    var matrixHorizon: SIMD4<Float> {
+        MatrixCodeFlow.horizon(geometry:geometry,configuration:matrixConfiguration,radiusScale:matrixRadiusScale)
+    }
     private let mouseLocation: @MainActor () -> CGPoint
     private let reduceMotion: @MainActor () -> Bool
     private var reducedPointerTimer: Timer?
@@ -435,9 +516,18 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         let local = convert(window.convertPoint(fromScreen:screenPoint),from:nil)
         let x = (local.x-bounds.minX)*geometry.size.width/bounds.width
         let y = (isFlipped ? local.y-bounds.minY : bounds.maxY-local.y)*geometry.size.height/bounds.height
-        let hole = MatrixCodeFlow.horizon(geometry:geometry,configuration:matrixConfiguration)
+        let hole = matrixHorizon
         let dx = Double(x)-Double(hole.x),dy = Double(y)-Double(hole.y)
-        return y >= geometry.notchHeight && dx*dx+dy*dy <= pow(Double(hole.z)+2,2)
+        guard y >= geometry.notchHeight else { return false }
+        let radius = Double(hole.z)
+        if dx*dx+dy*dy <= pow(radius+2,2) { return true }
+        // Include the exposed disk as well as the core. Match its tilt and
+        // width control without observing any mouse events outside this view.
+        let width = min(1,max(0,(matrixConfiguration.rimWidth-0.4)/1.4))
+        let outer = (5.6+1.65*width)/2.5980762
+        let diskX = (0.995*dx+0.100*dy)/(radius*outer+2)
+        let diskY = (-0.100*dx+0.995*dy)/(radius*(1.55+0.15*width)+2)
+        return diskX*diskX+diskY*diskY <= 1
     }
 
     private func stopReducedPointerTracking() {
@@ -486,7 +576,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
             flow: effect == .matrix ? MatrixCodeFlow.motionMultiplier(heat: animation.heat) : flameAppearance.flow)
         if effect == .matrix {
             holeInteraction.advance(by:delta,hovered:matrixContainsPointer(at:mouseLocation()),
-                reduceMotion:reduced,heat:animation.heat)
+                reduceMotion:reduced)
         } else { holeInteraction.reset() }
         lastTime = now
         guard let drawable = currentDrawable else {
@@ -503,7 +593,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
                 visibility: Float(animation.visibility), drawsAnchor: drawsAnchor,
                 color: animation.color, appearance: flameAppearance, matrixConfiguration: matrixConfiguration,
                 matrixColorScheme: matrixColorScheme,
-                matrixHover:holeInteraction.hover,matrixHeartbeatTime:holeInteraction.elapsed,
+                matrixHover:holeInteraction.hover,matrixBreathingTime:holeInteraction.elapsed,
                 reduceMotion: reduced, drawable: drawable)
             renderedFrameCount &+= 1
         } catch {

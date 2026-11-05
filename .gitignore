@@ -5,6 +5,7 @@
 
 # Build outputs and local tooling
 .build/
+.omx/
 /dist/
 /work/
 .venv/

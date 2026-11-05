@@ -1,32 +1,27 @@
 import Foundation
+import simd
 
-/// Accumulate the load-driven heart phase so changing speed never restarts a beat.
+/// A slow body breath stays independent of the load-driven growth envelope.
 struct MatrixHoleInteraction {
-    static let heartbeatPeriod = 2.8
+    static let breathingPeriod = 3.8
     private(set) var elapsed: Double = 0
     private(set) var hover: Double = 0
 
-    static func heartbeatMultiplier(heat: Double) -> Double {
+    static func radiusScale(heat: Double, time: Double, reduceMotion: Bool = false) -> Double {
         let load = heat.isFinite ? min(1,max(0,heat)) : 0
-        return 0.60+2.20*load
+        let clock = time.isFinite ? max(0,time) : 0
+        let breath = reduceMotion ? 0 : sin(clock.truncatingRemainder(dividingBy:breathingPeriod)/breathingPeriod*Double.pi*2)
+        // At most a four-percent peak-to-peak breath; never exceed the size cap.
+        return (0.58+0.42*load)*(0.98+0.02*breath)
     }
 
-    static func heartbeat(at time: Double) -> Double {
-        guard time.isFinite else { return 0.2 }
-        let phase = max(0,time).truncatingRemainder(dividingBy:heartbeatPeriod)/heartbeatPeriod
-        let breath = 0.5-0.5*cos(phase*Double.pi*2)
-        let first = exp(-pow((phase-0.26)/0.065,2))
-        let second = exp(-pow((phase-0.40)/0.085,2))
-        return min(1,0.12+0.22*breath+0.52*first+0.28*second)
-    }
-
-    mutating func advance(by delta: Double, hovered: Bool, reduceMotion: Bool, heat: Double = 0) {
+    mutating func advance(by delta: Double, hovered: Bool, reduceMotion: Bool) {
         guard delta.isFinite,delta >= 0 else { return }
         let step = min(0.1,delta)
         let target = hovered ? 1.0 : 0.0
         if reduceMotion { hover = target }
         else {
-            elapsed += step*Self.heartbeatMultiplier(heat:heat)
+            elapsed += step
             hover += (target-hover)*(1-exp(-step/(hovered ? 0.14 : 0.24)))
             if abs(target-hover) < 0.001 { hover = target }
         }
@@ -53,6 +48,21 @@ struct MatrixPulseSample: Equatable {
     let stage: MatrixFlowPass
     let codeSeed: Float
     let brightness: Float
+    let tangent: SIMD2<Float>
+    let strain: Float
+    /// Ownership may have moved to the disk while the diagnostic rain path continues.
+    let diskProgress: Float?
+
+    /// Upright rain gradually narrows and stretches along its capture path.
+    var quadOffsets: [SIMD2<Float>] {
+        let angle = atan2(tangent.x,tangent.y)*strain
+        let down = SIMD2(sin(angle),cos(angle))
+        let across = SIMD2(down.y,-down.x)
+        let halfWidth = width*0.68*(1-0.28*strain)
+        let halfHeight = width*0.76*(1+1.25*strain)
+        return [-across*halfWidth-down*halfHeight,across*halfWidth-down*halfHeight,
+                -across*halfWidth+down*halfHeight,across*halfWidth+down*halfHeight]
+    }
 }
 
 struct MatrixPulse: Equatable {
@@ -70,15 +80,15 @@ struct MatrixPulse: Equatable {
             let clock = sample.stage == .background ? -sample.clockRate : sample.clockRate
             let material = SIMD4(opacity*sample.opacity,sample.brightness,clock,sample.codeSeed)
             // Each character keeps its own identity from the wall to its final inward orbit.
-            let halfWidth = sample.width*0.68,halfHeight = sample.width*0.76
-            func vertex(_ x: Float,_ y: Float,_ u: Float,_ v: Float) -> MatrixPulseVertex {
-                MatrixPulseVertex(positionAndUV: SIMD4(sample.center.x+x,sample.center.y+y,v,u),
+            let corners = sample.quadOffsets
+            func vertex(_ offset: SIMD2<Float>,_ u: Float,_ v: Float) -> MatrixPulseVertex {
+                MatrixPulseVertex(positionAndUV: SIMD4(sample.center.x+offset.x,sample.center.y+offset.y,v,u),
                     material:material)
             }
-            let topLeft = vertex(-halfWidth,-halfHeight,-1.4,-0.08)
-            let topRight = vertex(halfWidth,-halfHeight,1.4,-0.08)
-            let bottomLeft = vertex(-halfWidth,halfHeight,-1.4,1.08)
-            let bottomRight = vertex(halfWidth,halfHeight,1.4,1.08)
+            let topLeft = vertex(corners[0],-1.4,-0.08)
+            let topRight = vertex(corners[1],1.4,-0.08)
+            let bottomLeft = vertex(corners[2],-1.4,1.08)
+            let bottomRight = vertex(corners[3],1.4,1.08)
             result += [topLeft,topRight,bottomLeft,topRight,bottomRight,bottomLeft]
         }
         return result
@@ -101,10 +111,111 @@ struct MatrixCaptureFlash: Equatable {
     var uniform: SIMD4<Float> { SIMD4(center.x,center.y,intensity,radius) }
 }
 
+/// A captured character keeps its rain identity while orbiting in the disk plane.
+struct MatrixDiskMatter: Equatable {
+    let id: UInt64
+    let codeSeed: Float
+    let angle: Float
+    let radius: Float
+    let progress: Float
+    let opacity: Float
+    let handoff: Float
+    let entry: SIMD2<Float>
+    let screenCenter: SIMD2<Float>
+    let screenTangent: SIMD2<Float>
+    let glyphWidth: Float
+    let emphasis: Float
+
+    /// Preserve readable glyph sizes on the lensed arcs. Their emitted light
+    /// still uses the disk-plane projection, which can collapse letters to lines.
+    var glyphVertices: [MatrixPulseVertex] {
+        let melt = max(0,min(1,(progress-0.80)/0.20))
+        let across = SIMD2(screenTangent.y,-screenTangent.x)
+        let dx = across*glyphWidth*0.60*(1-0.55*melt)
+        let dy = screenTangent*glyphWidth*0.72*(1+1.50*melt)
+        let material = SIMD4(opacity,progress,emphasis,codeSeed)
+        func vertex(_ offset:SIMD2<Float>,_ u:Float,_ v:Float) -> MatrixPulseVertex {
+            .init(positionAndUV:SIMD4(screenCenter.x+offset.x,screenCenter.y+offset.y,u,v),material:material)
+        }
+        let a = vertex(-dx-dy,0,0),b = vertex(dx-dy,1,0)
+        let c = vertex(-dx+dy,0,1),d = vertex(dx+dy,1,1)
+        return [a,b,c,b,d,c]
+    }
+
+    func vertices(outer: Float) -> [MatrixPulseVertex] {
+        let melt = max(0,min(1,(progress-0.55)/0.45))
+        let halfAngle = 0.25/max(radius,2.2)*(1+1.8*melt)
+        let halfRadius = 0.24*(1-0.70*melt)
+        let center = SIMD2((angle/(2*Float.pi)+0.5).truncatingRemainder(dividingBy:1),
+            (radius-MatrixAccretionGeometry.inner)/(outer-MatrixAccretionGeometry.inner))
+        let wrappedX = center.x < 0 ? center.x+1 : center.x
+        let halfWidth = halfAngle/(2*Float.pi)
+        let halfHeight = halfRadius/(outer-MatrixAccretionGeometry.inner)
+        let material = SIMD4(opacity,progress,handoff,codeSeed)
+        var centers = [wrappedX]
+        if wrappedX-halfWidth < 0 { centers.append(wrappedX+1) }
+        if wrappedX+halfWidth > 1 { centers.append(wrappedX-1) }
+        var result: [MatrixPulseVertex] = []
+        for x in centers {
+            func vertex(_ dx:Float,_ dy:Float,_ u:Float,_ v:Float) -> MatrixPulseVertex {
+                .init(positionAndUV:SIMD4(x+dx,center.y+dy,u,v),material:material)
+            }
+            let a = vertex(-halfWidth,-halfHeight,0,0),b = vertex(halfWidth,-halfHeight,1,0)
+            let c = vertex(-halfWidth,halfHeight,0,1),d = vertex(halfWidth,halfHeight,1,1)
+            result += [a,b,c,b,d,c]
+        }
+        return result
+    }
+}
+
+/// The CPU handoff uses the same disk intersections as the Metal lens.
+/// Photon acceleration/integration: Ghostty Blackhole, MIT; see Vendor notice.
+enum MatrixAccretionGeometry {
+    static let inner: Float = 2.2
+    static let critical: Float = 2.5980762
+
+    static func outer(width: Double) -> Float {
+        Float(5.6+1.65*min(1,max(0,(width-0.4)/1.4)))
+    }
+
+    static func crossing(relative:SIMD2<Double>,radius:Double,outer:Float) -> SIMD2<Float>? {
+        let q = SIMD2(0.995*relative.x+0.100*relative.y,
+            -0.100*relative.x+0.995*relative.y)/radius
+        guard simd_length(q) < Double(outer/critical)+0.12 else { return nil }
+        var x = SIMD3(q.x*Double(critical),-q.y*Double(critical),14)
+        var v = SIMD3<Double>(0,0,-1)
+        let momentum = x.x*x.x+x.y*x.y
+        let normal = SIMD3<Double>(0,0.99871014,0.05077449)
+        let vertical = SIMD3<Double>(0,0.05077449,-0.99871014)
+        var previousSide = simd_dot(x,normal)
+        for _ in 0..<72 {
+            var r2 = simd_dot(x,x)
+            if r2 < 1 || x.z < -14 || r2 > 784 { break }
+            let dt = min(1.5,max(0.03,0.16*sqrt(r2)))
+            let previous = x
+            v += (-1.5*momentum/(r2*r2*sqrt(r2)))*x*(0.5*dt)
+            x += v*dt
+            r2 = max(0.0001,simd_dot(x,x))
+            v += (-1.5*momentum/(r2*r2*sqrt(r2)))*x*(0.5*dt)
+            let side = simd_dot(x,normal)
+            if side*previousSide < 0 {
+                let point = previous+(x-previous)*(previousSide/(previousSide-side))
+                let r = simd_length(point)
+                if r > Double(inner)+0.05 && r < Double(outer)-0.05 {
+                    return SIMD2(Float(atan2(simd_dot(point,vertical),point.x)),Float(r))
+                }
+            }
+            previousSide = side
+        }
+        return nil
+    }
+}
+
 struct MatrixFlowFrame {
     var pulses: [MatrixPulse] = []
     var ports: [MatrixPortPulse] = []
     var flashes: [MatrixCaptureFlash] = []
+    var diskMatter: [MatrixDiskMatter] = []
     var vertices: [MatrixPulseVertex] {
         var background: [MatrixPulseVertex] = [],foreground: [MatrixPulseVertex] = []
         for pulse in pulses {
@@ -135,22 +246,23 @@ enum MatrixCodeFlow {
         .map { ($0*13)%sourceColumns }.filter { ![0,31,15,16].contains($0) }
 
     static func horizon(geometry: NotchFlameGeometry,
-                        configuration: NotchMatrixConfiguration = .standard) -> SIMD4<Float> {
+                        configuration: NotchMatrixConfiguration = .standard, radiusScale: Double = 1) -> SIMD4<Float> {
         let size = configuration.validationError == nil ? configuration.blackHoleSize : NotchMatrixConfiguration.standard.blackHoleSize
-        let radius = Float(min(15.5,max(10.5,geometry.notchWidth*0.075))*size)
+        let scale = radiusScale.isFinite ? min(1,max(0.4,radiusScale)) : 1
+        let radius = Float(min(15.5,max(10.5,geometry.notchWidth*0.075))*size*scale)
         let offset = configuration.validationError == nil ? configuration.verticalOffset : 0
         return SIMD4(Float(geometry.notch.midX),Float(geometry.notchHeight)+Float(offset),radius,1)
     }
 
     static func diskPlane(geometry: NotchFlameGeometry,
-                          configuration: NotchMatrixConfiguration = .standard) -> SIMD4<Float> {
-        let hole = horizon(geometry: geometry,configuration:configuration)
+                          configuration: NotchMatrixConfiguration = .standard, radiusScale: Double = 1) -> SIMD4<Float> {
+        let hole = horizon(geometry: geometry,configuration:configuration,radiusScale:radiusScale)
         return SIMD4(hole.x,hole.y+hole.z*0.05,0.82,0.025)
     }
 
     static func diskPoint(_ point: SIMD2<Float>,geometry: NotchFlameGeometry,
-                          configuration: NotchMatrixConfiguration = .standard) -> SIMD2<Float> {
-        let plane = diskPlane(geometry: geometry,configuration:configuration)
+                          configuration: NotchMatrixConfiguration = .standard, radiusScale: Double = 1) -> SIMD2<Float> {
+        let plane = diskPlane(geometry: geometry,configuration:configuration,radiusScale:radiusScale)
         let x = point.x-plane.x
         return SIMD2(x,(point.y-plane.y-x*plane.w)/plane.z)
     }
@@ -166,14 +278,17 @@ enum MatrixCodeFlow {
 
     static func frame(geometry: NotchFlameGeometry,time: Double,heat: Float,
                       configuration: NotchMatrixConfiguration = .standard,
+                      radiusScale: Double = 1,
                       pass: MatrixFlowPass = .composed,
                       seed: UInt64 = previewSeed) -> MatrixFlowFrame {
         let width = Double(geometry.notchWidth)
-        guard pass != .aperture,heat.isFinite,heat > 0,time.isFinite,width.isFinite,width > 0,
-              geometry.notchHeight.isFinite,configuration.validationError == nil else { return MatrixFlowFrame() }
+        guard heat.isFinite,heat > 0,time.isFinite,width.isFinite,width > 0,
+              geometry.notchHeight.isFinite,configuration.validationError == nil,
+              radiusScale.isFinite,radiusScale >= 0.4,radiusScale <= 1 else { return MatrixFlowFrame() }
         let fit = min(1.12,width/180)
-        let aperture = horizon(geometry:geometry,configuration:configuration)
+        let aperture = horizon(geometry:geometry,configuration:configuration,radiusScale:radiusScale)
         let sink = SIMD2(Double(aperture.x),Double(aperture.y))
+        let outerDisk = MatrixAccretionGeometry.outer(width:configuration.rimWidth)
         let budget = 4+Double(maximumPulses-4)*pow(Double(min(1,heat)),0.92)
         var result = MatrixFlowFrame()
         for slot in 0..<maximumPulses {
@@ -182,11 +297,15 @@ enum MatrixCodeFlow {
             // Keep both rounded ends and the two mouth columns present at every load.
             let column = emissionOrder[slot]
             let lane = mix(seed &+ UInt64(column) &* 0xD1B5_4A32_D192_ED03)
-            let direct = makePath(geometry:geometry,configuration:configuration,column:column,seed:lane,lingering:false)
-            let lingering = makePath(geometry:geometry,configuration:configuration,column:column,seed:lane,lingering:true)
+            let direct = makePath(geometry:geometry,configuration:configuration,radiusScale:radiusScale,column:column,seed:lane,lingering:false)
+            let lingering = makePath(geometry:geometry,configuration:configuration,radiusScale:radiusScale,column:column,seed:lane,lingering:true)
             let background = makeBackgroundPath(geometry:geometry,column:column,seed:lane)
             let directCapture = direct.captureClock(center:sink,radius:Double(aperture.z)*0.96)
             let lingeringCapture = lingering.captureClock(center:sink,radius:Double(aperture.z)*0.96)
+            let directDisk = direct.diskEntry(center:sink,radius:Double(aperture.z),outer:outerDisk,
+                notchY:Double(geometry.notchHeight))
+            let lingeringDisk = lingering.diskEntry(center:sink,radius:Double(aperture.z),outer:outerDisk,
+                notchY:Double(geometry.notchHeight))
             let gap = 0.22+random(lane,12)*0.04
             let clock = max(0,time)+random(lane,15)*71
             let newest = floor(clock/(gap*0.25))+2
@@ -194,7 +313,7 @@ enum MatrixCodeFlow {
             let baseWidth = (3.40+Double(depth)*0.35)*fit
             var samples: [MatrixPulseSample] = []
             let recentCount = min(pulseSegments,
-                Int(ceil((max(direct.duration,lingering.duration,background.duration)+gap)/(gap*0.25)))+3)
+                Int(ceil((max(direct.duration,lingering.duration,background.duration)+4.2+gap)/(gap*0.25)))+3)
             for index in 0..<recentCount {
                 let emission = newest-Double(index)
                 let generation = floor(emission/4)
@@ -215,9 +334,72 @@ enum MatrixCodeFlow {
                 let ambient = random(event,33) < 0.30
                 let lingers = random(event,17) < 0.12
                 let path = ambient ? background : lingers ? lingering : direct
-                guard age >= 0,age < path.duration else { continue }
+                guard age >= 0,age < path.duration+(ambient ? 0 : 4.2) else { continue }
                 let point = path.at(clock:age)
-                if !ambient,pass == .composed {
+                var diskHandoff = 0.0
+                var diskProgress: Float?
+                let capturedDiskEntry = lingers ? lingeringDisk : directDisk
+                if !ambient,let entry = capturedDiskEntry {
+                    let diskAge = age-entry.clock
+                    if diskAge >= 0 {
+                        diskHandoff = smooth(0,0.22,diskAge)
+                        let lifetime = 3.2+1.0*random(event,40)
+                        let progress = diskAge/lifetime
+                        diskProgress = Float(progress)
+                        if progress < 1 {
+                            let drain = (Double(entry.polar.y-MatrixAccretionGeometry.inner)+0.18)*pow(progress,1.35)
+                            let r = Double(entry.polar.y)-drain
+                            let orbitRate = (3.1+0.8*random(event,41))*pow(
+                                Double(MatrixAccretionGeometry.inner)/max(Double(MatrixAccretionGeometry.inner),r),0.65)
+                            let angle = Double(entry.polar.x)-diskAge*orbitRate
+                            let contribution = loadOpacity*Double(0.57+depth*0.40)*(0.5+0.5*random(event,25))
+                            let opacity = diskHandoff*(1-smooth(0.82,1,progress))*density*contribution
+                            let entryOffset = entry.position-sink
+                            let screenAngle = atan2(entryOffset.y,entryOffset.x)+diskAge*(1.25+0.25*random(event,41))
+                            let radial = min(1,max(0,(r-Double(MatrixAccretionGeometry.inner))/Double(outerDisk-MatrixAccretionGeometry.inner)))
+                            let ring = Double(aperture.z)*(1.04+(0.47+0.10*Double(outerDisk-5.6))*radial)
+                            let verticalScale = sin(screenAngle) < 0 ? 1.03 : 0.92
+                            let projected = sink+SIMD2(cos(screenAngle)*ring,sin(screenAngle)*ring*verticalScale)
+                            // Broad, distant inlets need time to settle onto the
+                            // readable arc; a short blend can jump several glyphs per frame.
+                            // Crossfade at the incoming glyph's current position,
+                            // then settle onto the arc without crossing the opaque core.
+                            var screenCenter = point.position+(projected-point.position)*smooth(0,0.65,diskAge)
+                            let screenOffset = screenCenter-sink
+                            let screenDistance = length(screenOffset)
+                            let innerScreenRadius = Double(aperture.z)*1.035
+                            if screenDistance < innerScreenRadius && screenDistance > 0.0001 {
+                                screenCenter = sink+screenOffset*(innerScreenRadius/screenDistance)
+                            }
+                            let tangent = SIMD2(-sin(screenAngle),cos(screenAngle)*verticalScale)
+                            let normalizedTangent = tangent/max(0.0001,length(tangent))
+                            result.diskMatter.append(.init(id:event,
+                                codeSeed:Float(floor(random(event,24)*4096)),angle:Float(angle),radius:Float(r),
+                                progress:Float(progress),opacity:Float(opacity),handoff:Float(diskHandoff),
+                                entry:SIMD2(Float(entry.position.x),Float(entry.position.y)),
+                                screenCenter:SIMD2(Float(screenCenter.x),Float(screenCenter.y)),
+                                screenTangent:SIMD2(Float(normalizedTangent.x),Float(normalizedTangent.y)),
+                                glyphWidth:Float(baseWidth*(0.62+0.18*random(event,43))),
+                                emphasis:random(event,42) < 0.30 ? Float(0.68+0.32*random(event,44)) : 0.18))
+                            let flashAge = diskAge-(lifetime-Self.captureFlashDuration)
+                            if pass == .composed,flashAge >= 0 {
+                                let flashProgress = flashAge/Self.captureFlashDuration
+                                let finalAngle = atan2(entryOffset.y,entryOffset.x) +
+                                    (lifetime-Self.captureFlashDuration)*(1.25+0.25*random(event,41))
+                                let edgeDirection = SIMD2(cos(finalAngle),sin(finalAngle))
+                                let center = sink+edgeDirection*Double(aperture.z)*0.95
+                                let envelope = sin(Double.pi*flashProgress)*pow(1-flashProgress,1.5)
+                                result.flashes.append(.init(id:event,
+                                    center:SIMD2(Float(center.x),Float(center.y)),
+                                    intensity:Float(envelope*density*loadOpacity*(0.12+0.07*random(event,38))),
+                                    radius:Float((1.25+0.55*random(event,39))*fit*(1-0.35*flashProgress)),
+                                    progress:Float(flashProgress)))
+                            }
+                        }
+                    }
+                }
+                guard age < path.duration else { continue }
+                if !ambient,pass == .composed,capturedDiskEntry == nil {
                     if let captureClock = lingers ? lingeringCapture : directCapture {
                         // The flash follows the same birth and path as its glyph.
                         // It begins only after entry and dies before code can orbit on the surface.
@@ -242,17 +424,22 @@ enum MatrixCodeFlow {
                 let life = smooth(0,0.12,age)*(ambient ? 1-smooth(path.duration-1,path.duration-0.05,age) : 1)
                 let selected = pass == .composed || pass == point.stage
                 let disk = diskPoint(SIMD2(Float(point.position.x),Float(point.position.y)),
-                    geometry:geometry,configuration:configuration)
+                    geometry:geometry,configuration:configuration,radiusScale:radiusScale)
                 let angle = atan2(Double(disk.y),Double(disk.x))
                 // Broad, slowly advected density pockets break the outline of complete glyph rings.
                 let pocket = 0.30+0.70*pow(0.5+0.5*sin(angle*2-time*0.52+Double(column%3)*0.32),2)
                 let opacity = ambient ? 0.24 : orbital ? 0.68*pocket : point.stage == .gathering ? 0.72 : 1
+                let physicalDistance = length(point.position-sink)
+                let strain = ambient ? 0 : 1-smooth(Double(aperture.z)*1.05,
+                    Double(aperture.z)*2.15,physicalDistance)
                 samples.append(MatrixPulseSample(id:event,
                     center:SIMD2(Float(point.position.x),Float(point.position.y)),
                     width:Float(width),clockRate:Float(point.rate),
-                    opacity:Float(selected ? life*opacity*density : 0),stage:point.stage,
+                    opacity:Float(selected ? life*opacity*density*(1-diskHandoff) : 0),stage:point.stage,
                     codeSeed:Float(floor(random(event,24)*4096)),
-                    brightness:Float(0.58+0.42*pow(random(event,25),1.5))))
+                    brightness:Float(0.58+0.42*pow(random(event,25),1.5)),
+                    tangent:SIMD2(Float(point.tangent.x),Float(point.tangent.y)),strain:Float(strain),
+                    diskProgress:diskProgress))
             }
             guard samples.contains(where: { $0.opacity > 0.0001 }) else { continue }
             result.pulses.append(MatrixPulse(id:lane,depth:depth,
@@ -279,6 +466,7 @@ enum MatrixCodeFlow {
         var rate: Double
         var speed: Double
         var stage: MatrixFlowPass
+        var tangent = SIMD2<Double>(0,1)
     }
 
     private struct ClockPath {
@@ -308,9 +496,11 @@ enum MatrixCodeFlow {
             }
             let fraction = (clock-clocks[lower])/max(0.0001,clocks[upper]-clocks[lower])
             let a = points[lower],b = points[upper]
+            let direction = b.position-a.position
+            let tangent = direction/max(0.0001,MatrixCodeFlow.length(direction))
             return FlowPoint(position:a.position+(b.position-a.position)*fraction,
                 rate:a.rate+(b.rate-a.rate)*fraction,speed:a.speed+(b.speed-a.speed)*fraction,
-                stage:b.stage)
+                stage:b.stage,tangent:tangent)
         }
 
         func captureClock(center:SIMD2<Double>,radius:Double) -> Double? {
@@ -321,6 +511,39 @@ enum MatrixCodeFlow {
                     let fraction = (a-radius)/max(0.0001,a-b)
                     return clocks[index-1]+(clocks[index]-clocks[index-1])*fraction
                 }
+            }
+            return nil
+        }
+
+        struct DiskEntry {
+            let clock: Double
+            let polar: SIMD2<Float>
+            let position: SIMD2<Double>
+        }
+
+        func diskEntry(center:SIMD2<Double>,radius:Double,outer:Float,notchY:Double) -> DiskEntry? {
+            func hit(_ clock:Double) -> DiskEntry? {
+                let point = at(clock:clock)
+                let offset = point.position-center
+                guard point.position.y > notchY+0.8,simd_length(offset) > radius*1.02,
+                      let polar = MatrixAccretionGeometry.crossing(relative:offset,radius:radius,outer:outer) else { return nil }
+                return DiskEntry(clock:clock,polar:polar,position:point.position)
+            }
+            var previous = 0.0
+            // Only the falling/gathering approach can hand a character to the disk.
+            for index in stride(from:1,to:points.count,by:3) {
+                if points[index].stage == .orbiting { break }
+                let clock = clocks[index]
+                if var found = hit(clock) {
+                    var low = previous,high = clock
+                    for _ in 0..<5 {
+                        let middle = (low+high)*0.5
+                        if let candidate = hit(middle) { high = middle;found = candidate }
+                        else { low = middle }
+                    }
+                    return found
+                }
+                previous = clock
             }
             return nil
         }
@@ -342,9 +565,9 @@ enum MatrixCodeFlow {
     }
 
     private static func makePath(geometry:NotchFlameGeometry,configuration:NotchMatrixConfiguration,
-                                 column:Int,seed:UInt64,lingering:Bool) -> ClockPath {
-        let hole = horizon(geometry:geometry,configuration:configuration)
-        let plane = diskPlane(geometry:geometry,configuration:configuration)
+                                 radiusScale:Double,column:Int,seed:UInt64,lingering:Bool) -> ClockPath {
+        let hole = horizon(geometry:geometry,configuration:configuration,radiusScale:radiusScale)
+        let plane = diskPlane(geometry:geometry,configuration:configuration,radiusScale:radiusScale)
         let radius = Double(hole.z),fit = min(1.12,Double(geometry.notchWidth)/180)
         let cx = Double(hole.x),cy = Double(hole.y),edge = Double(geometry.notchHeight)
         let halfWidth = Double(geometry.notchWidth)*0.5

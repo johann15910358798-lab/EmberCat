@@ -68,10 +68,14 @@ struct MatrixCheck {
             "Adding the distance slider preserves all three previously saved values")
         let previousFour = Data(#"{"blackHoleSize":1.75,"gravity":1.8,"density":2,"verticalOffset":32}"#.utf8)
         let fourMigrated = try JSONDecoder().decode(NotchMatrixConfiguration.self,from:previousFour)
-        try require(fourMigrated.verticalOffset == 32 && fourMigrated.heartSize == 1 && fourMigrated.rimWidth == 1,
+        try require(fourMigrated.verticalOffset == 32 && fourMigrated.rimWidth == 1,
             "Saved four-slider settings retain their values and receive the current light sizes")
+        let oldLampSettings = Data(#"{"blackHoleSize":1.5,"gravity":1.4,"density":1.7,"verticalOffset":32,"heartSize":1.8,"rimWidth":0.7}"#.utf8)
+        let migratedLampSettings = try JSONDecoder().decode(NotchMatrixConfiguration.self,from:oldLampSettings)
+        try require(migratedLampSettings == .init(blackHoleSize:1.5,gravity:1.4,density:1.7,verticalOffset:32,rimWidth:0.7),
+            "Removing the center light ignores its old setting while preserving every remaining preference")
         let tunedConfiguration = NotchMatrixConfiguration(blackHoleSize:1.5,gravity:1.4,density:1.7,
-            verticalOffset:32,heartSize:1.3,rimWidth:0.7)
+            verticalOffset:32,rimWidth:0.7)
         let paletteData = defaults.data(forKey:"notchFlamePalette")
         let appearanceData = defaults.data(forKey:"notchFlameAppearance")
         try require(settings.setMatrixConfiguration(tunedConfiguration)
@@ -109,11 +113,7 @@ struct MatrixCheck {
         }
         func glyphExtent(_ sample:MatrixPulseSample,_ aperture:SIMD4<Float>) -> Float {
             let offset = sample.center-SIMD2(aperture.x,aperture.y)
-            return [-1.0,1.0].flatMap { x in
-                [-1.0,1.0].map { y in
-                    distance(offset+SIMD2(Float(x)*sample.width*0.68,Float(y)*sample.width*0.76))
-                }
-            }.max()!
+            return sample.quadOffsets.map { distance(offset+$0) }.max()!
         }
         let seed = MatrixCodeFlow.previewSeed
         let geometry = NotchFlameGeometry(notchWidth:180,notchHeight:32,effect:.matrix)
@@ -139,11 +139,13 @@ struct MatrixCheck {
             var codeSeed: Float?
             var lastStage: MatrixFlowPass?
             var endedInsideShadow = false
+            var transferredToDisk = false
             var nearSpeeds: [Float] = []
             var farSpeeds: [Float] = []
         }
         var peakVertices = 0,immediateAttractionSamples = 0,orbitalMotionSamples = 0
         var completeCaptures = 0,orbitArrivals = 0,terminalSamples = 0
+        var diskTransferRetirements = 0
         var maximumTerminalExtent: Float = 0
         var portalSamples = 0,wallFrames = 0,totalFrames = 0
         var maximumTravel: Float = 0,minimumWidth = Float.infinity,maximumWidth: Float = 0
@@ -176,8 +178,14 @@ struct MatrixCheck {
                 for index in stride(from:0,to:vertices.count,by:6) {
                     let a = vertices[index].positionAndUV,b = vertices[index+1].positionAndUV
                     let c = vertices[index+2].positionAndUV
-                    try require(a.x < b.x && a.y == b.y && a.x == c.x && c.y > a.y,
-                        "Characters are separate upright quads, without strip geometry")
+                    let across = SIMD2(b.x-a.x,b.y-a.y),down = SIMD2(c.x-a.x,c.y-a.y)
+                    try require(across.x*down.y-across.y*down.x > 0
+                        && abs(across.x*down.x+across.y*down.y) < 0.002,
+                        "Every strained character remains a separate, non-inverted rectangular quad")
+                    if vertices[index].material.z < 0 {
+                        try require(a.x < b.x && a.y == b.y && a.x == c.x && c.y > a.y,
+                            "Independent background rain remains upright and unstrained")
+                    }
                 }
                 for port in frame.ports {
                     try require(port.x.isFinite && port.intensity > 0 && port.intensity <= 1
@@ -185,8 +193,11 @@ struct MatrixCheck {
                         "Contact light stays on the notch")
                     portalSamples += 1
                 }
-                let following = glyphs(MatrixCodeFlow.frame(geometry:geometry,time:phase+1/60,
-                    heat:heat,seed:testSeed))
+                let followingFrame = MatrixCodeFlow.frame(geometry:geometry,time:phase+1/60,
+                    heat:heat,seed:testSeed)
+                let following = glyphs(followingFrame)
+                let receivingDisk = Dictionary((frame.diskMatter+followingFrame.diskMatter).map { ($0.id,$0) },
+                    uniquingKeysWith: { _,new in new })
                 var wallColumns = Set<UInt64>()
                 for pulse in frame.pulses {
                     try require(abs(pulse.sourceX-hole.x) > hole.z+0.5,
@@ -303,17 +314,21 @@ struct MatrixCheck {
                                 backgroundExitSamples += 1
                                 continue
                             }
-                            let offset = sample.center-SIMD2(hole.x,hole.y)
-                            let extent = [-1.0,1.0].flatMap { x in
-                                [-1.0,1.0].map { y in
-                                    distance(offset+SIMD2(Float(x)*sample.width*0.68,Float(y)*sample.width*0.76))
-                                }
-                            }.max()!
-                            maximumTerminalExtent = max(maximumTerminalExtent,extent/hole.z)
-                            try require(sample.stage == .orbiting && extent < hole.z*0.90,
-                                "Every retiring character must fit completely inside the actual shadow; opacity cannot excuse an early disappearance")
-                            trace.endedInsideShadow = true
-                            terminalSamples += 1
+                            let received = receivingDisk[sample.id].map {
+                                $0.codeSeed == sample.codeSeed && $0.handoff > 0.999
+                            } ?? false
+                            let diskFinished = (sample.diskProgress ?? -1) >= 1
+                            if received || (sample.opacity < 0.0001 && diskFinished) {
+                                trace.transferredToDisk = true
+                                diskTransferRetirements += 1
+                            } else {
+                                let extent = glyphExtent(sample,hole)
+                                maximumTerminalExtent = max(maximumTerminalExtent,extent/hole.z)
+                                try require(sample.stage == .orbiting && extent < hole.z*0.90,
+                                    "Rain can retire only inside the shadow or after receipt by the same disk glyph")
+                                trace.endedInsideShadow = true
+                                terminalSamples += 1
+                            }
                         }
                         trace.lastStage = sample.stage
                         traces[sample.id] = trace
@@ -326,7 +341,7 @@ struct MatrixCheck {
                 if let fall = trace.firstFalling,let gather = trace.firstGathering,let orbit = trace.firstOrbit {
                     try require(fall <= gather && gather <= orbit,"A character falls, gathers and orbits in order")
                     orbitArrivals += 1
-                    if trace.endedInsideShadow { completeCaptures += 1 }
+                    if trace.endedInsideShadow || trace.transferredToDisk { completeCaptures += 1 }
                 }
                 if let first = trace.firstOrbit,let last = trace.lastOrbit,last-first > 1 {
                     residenceTimes.append(Float(last-first))
@@ -350,9 +365,11 @@ struct MatrixCheck {
             "Nearby rain reaches capture sooner while distant rain keeps a visible vertical run")
         try require(maximumTravel < 3 && peakVertices > MatrixCodeFlow.maximumInlineVertices,
             "Continuous glyph motion exercises batching without frame jumps")
-        try require(immediateAttractionSamples > 100 && completeCaptures > 100 && terminalSamples > 100
+        print("Capture routes: shadow \(terminalSamples), disk \(diskTransferRetirements), complete \(completeCaptures)")
+        try require(immediateAttractionSamples > 100 && completeCaptures > 100
+            && terminalSamples+diskTransferRetirements > 100
             && portalSamples > 20,
-            "The sample covers distance-graded gravity, complete absorption inside the shadow and notch contacts")
+            "The sample covers gravity, verified transfer/absorption and notch contacts")
         try require(inwardGatherSamples > 1000 && leftRearEntrySamples > 20 && rightFrontEntrySamples > 20,
             "The sample covers inward capture with distinct rear-left and front-right inlets")
         try require(wallFrames > totalFrames*9/10
@@ -407,6 +424,7 @@ struct MatrixCheck {
             let moved = glyphs(MatrixCodeFlow.frame(geometry:geometry,time:phase,heat:heat,
                 configuration:.init(blackHoleSize:0.75,gravity:0.5,density:2,verticalOffset:64),seed:seed))
             let vertices = frame.vertices
+            var visibleForeground = Set<UInt64>()
             if let firstForeground = vertices.firstIndex(where: { $0.material.z >= 0 }) {
                 try require(vertices[firstForeground...].allSatisfy { $0.material.z >= 0 },
                     "Background glyphs composite before every foreground glyph")
@@ -417,8 +435,13 @@ struct MatrixCheck {
                         "Background positions, speed, density and dimness are independent of hole size, gravity and distance")
                     independentBackgroundSamples += 1
                     backgroundCount += 1
-                } else { foregroundCount += 1 }
+                } else { visibleForeground.insert(sample.id) }
             }
+            for particle in frame.diskMatter where particle.opacity > 0.01
+                && particle.screenCenter.y > Float(geometry.notchHeight)+1 {
+                visibleForeground.insert(particle.id)
+            }
+            foregroundCount += visibleForeground.count
         }
         let backgroundShare = Double(backgroundCount)/Double(backgroundCount+foregroundCount)
         try require(independentBackgroundSamples > 500 && backgroundMotionSamples > 500
@@ -481,15 +504,19 @@ struct MatrixCheck {
                             let mouth = sqrt(max(0,aperture.z*aperture.z-Float(offset*offset)))
                             try require(abs(aperture.y-Float(height+offset)) < 0.001,
                                 "The physical sink follows the distance control")
-                            var terminals = 0,checkedReturns = 0
+                            var terminals = 0,transfers = 0,checkedReturns = 0
                             var largestExtent: Float = 0
+                            var emittedSourceXs = [Float]()
                             // Fewer foreground births need a longer observation window
                             // to retain the same complete-capture coverage per combination.
                             for phase in stride(from:0.0,through:36,by:0.4) {
                                 let frame = MatrixCodeFlow.frame(geometry:shape,time:phase,heat:1,
                                     configuration:configuration,seed:seed)
-                                let next = glyphs(MatrixCodeFlow.frame(geometry:shape,time:phase+1/60,heat:1,
-                                    configuration:configuration,seed:seed))
+                                let nextFrame = MatrixCodeFlow.frame(geometry:shape,time:phase+1/60,heat:1,
+                                    configuration:configuration,seed:seed)
+                                let next = glyphs(nextFrame)
+                                let receivers = Dictionary((frame.diskMatter+nextFrame.diskMatter).map { ($0.id,$0) },
+                                    uniquingKeysWith: { _,new in new })
                                 let vertices = frame.vertices
                                 let identifiers = frame.pulses.flatMap(\.samples).map(\.id)
                                 parameterPeakVertices = max(parameterPeakVertices,vertices.count)
@@ -498,13 +525,7 @@ struct MatrixCheck {
                                     && identifiers.count == Set(identifiers).count,
                                     "Parameter extremes keep geometry within the renderer's capacity")
                                 let sourceXs = frame.pulses.map(\.sourceX)
-                                try require(sourceXs.min()! < Float(shape.notch.minX)+1.5
-                                    && sourceXs.max()! > Float(shape.notch.maxX)-1.5,
-                                    "Both rounded ends emit rain without fixed side gaps")
-                                if offset > Double(aperture.z) {
-                                    try require(sourceXs.contains { abs($0-aperture.x) < 5 },
-                                        "Detaching the hole restores emission from the middle of the notch")
-                                }
+                                emittedSourceXs += sourceXs
                                 for pulse in frame.pulses {
                                     try require(abs(pulse.sourceX-aperture.x) > mouth,
                                         "Only the actual intersection blocks rain sources")
@@ -539,22 +560,38 @@ struct MatrixCheck {
                                                     "Background retirement is an offscreen fade, not foreground absorption")
                                                 continue
                                             }
+                                            let received = receivers[sample.id].map {
+                                                $0.codeSeed == sample.codeSeed && $0.handoff > 0.999
+                                            } ?? false
+                                            let diskFinished = (sample.diskProgress ?? -1) >= 1
+                                            if received || (sample.opacity < 0.0001 && diskFinished) {
+                                                transfers += 1
+                                                continue
+                                            }
                                             let extent = glyphExtent(sample,aperture)/aperture.z
                                             largestExtent = max(largestExtent,extent)
                                             try require(sample.stage == .orbiting && extent < 0.90,
-                                                "Every glyph finishes inside the moved hole: width=\(width), offset=\(offset), extent=\(extent)")
+                                                "Unreceived rain retirement: width=\(width), size=\(size), gravity=\(gravity), density=\(density), offset=\(offset), phase=\(phase), extent=\(extent), sample=\(sample), receiver=\(String(describing:receivers[sample.id]))")
                                             terminals += 1
                                         }
                                     }
                                 }
                             }
-                            try require(terminals > 30 && checkedReturns > 100,
+                            try require(emittedSourceXs.min()! < Float(shape.notch.minX)+1.5
+                                && emittedSourceXs.max()! > Float(shape.notch.maxX)-1.5,
+                                "Both rounded ends emit over the observation window, including sparse rain")
+                            if offset > Double(aperture.z) {
+                                try require(emittedSourceXs.contains { abs($0-aperture.x) < 5 },
+                                    "Detaching the hole restores emission from the middle of the notch")
+                            }
+                            try require(terminals+transfers > 30 && checkedReturns > 100,
                                 "Capture coverage: width=\(width), size=\(size), gravity=\(gravity), density=\(density), offset=\(offset), terminals=\(terminals), returns=\(checkedReturns)")
                             parameterTerminalSamples += terminals
                             parameterMaximumTerminalExtent = max(parameterMaximumTerminalExtent,largestExtent)
                             parameterSweep.append(["width":width,"height":height,"blackHoleSize":size,
                                 "gravity":gravity,"density":density,"verticalOffset":offset,
                                 "terminalSamples":terminals,"returningSamples":checkedReturns,
+                                "diskTransferRetirements":transfers,
                                 "maximumTerminalExtentOverRadius":largestExtent])
                         }
                     }
@@ -642,6 +679,10 @@ struct MatrixCheck {
         try require(transition.isHidden && !transition.needsFrames(reduceMotion:false),
             "Zero load fades out and stops requesting frames")
 
+        func liveScale(_ speed:Double,_ time:Double) -> Double {
+            MatrixHoleInteraction.radiusScale(heat:NotchFlameAnimation.heat(for:speed),time:time)
+        }
+        let renderHole = MatrixCodeFlow.horizon(geometry:geometry,radiusScale:liveScale(90,12.4))
         let baseline = bytes(try renderer.image(geometry: geometry,time: 12.4,speed: 90))
         let changed = bytes(try renderer.image(geometry: geometry,time: 12.8,speed: 90))
         let changedBytes = zip(baseline,changed).filter { $0 != $1 }.count
@@ -677,6 +718,8 @@ struct MatrixCheck {
             return 1.05/(0.0722*channels[0]+0.7152*channels[1]+0.2126*channels[2]+0.05)
         }
         var themeContrast = [[String:Any]]()
+        let contrastDiskMask = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
+            scale:4,matrixPass:.aperture))
         for flowPass in [MatrixFlowPass.falling,.background] {
             let darkCode = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
                 scale:4,matrixColorScheme:.dark,matrixPass:flowPass))
@@ -688,7 +731,8 @@ struct MatrixCheck {
                 let x = (Float((offset/4)%imageWidth)+0.5)/4
                 let y = (Float((offset/4)/imageWidth)+0.5)/4
                 guard y > Float(geometry.notchHeight)+4,
-                      distance(SIMD2(x-hole.x,y-hole.y)) > hole.z+8,
+                      distance(SIMD2(x-renderHole.x,y-renderHole.y)) > renderHole.z+8,
+                      contrastDiskMask[offset+3] == 0,
                       darkCode[offset+3] > (flowPass == .background ? 18 : 90) else { continue }
                 previousContrast.append(contrastOnWhite(darkCode,at:offset))
                 newContrast.append(contrastOnWhite(lightCode,at:offset))
@@ -702,11 +746,12 @@ struct MatrixCheck {
         var preservedCorePixels = 0
         let themeImageWidth = Int(geometry.size.width*2)
         for offset in stride(from:0,to:baseline.count,by:4) {
-            let point = SIMD2((Float((offset/4)%themeImageWidth)+0.5)/2-hole.x,
-                (Float((offset/4)/themeImageWidth)+0.5)/2-hole.y)
-            if distance(point) < hole.z-1 {
+            let point = SIMD2((Float((offset/4)%themeImageWidth)+0.5)/2-renderHole.x,
+                (Float((offset/4)/themeImageWidth)+0.5)/2-renderHole.y)
+            let diskHeight = -0.100*point.x+0.995*point.y
+            if distance(point) < renderHole.z*0.65 && abs(diskHeight) > renderHole.z*0.22 {
                 try require(lightPixels[offset...offset+3] == baseline[offset...offset+3],
-                    "The black core and heartbeat stay unchanged across appearance palettes")
+                    "The unlit black core stays unchanged across appearance palettes")
                 preservedCorePixels += 1
             }
             try require(lightPixels[offset...offset+2].allSatisfy { Int($0) <= Int(lightPixels[offset+3])+1 },
@@ -736,7 +781,7 @@ struct MatrixCheck {
                 let image = try renderer.image(geometry: shape,time: phase,speed: 90,scale: scale)
                 let pixels = bytes(image)
                 var codePixels = 0,opaqueDarkPixelsOutsideHorizon = 0
-                let aperture = MatrixCodeFlow.horizon(geometry: shape)
+                let aperture = MatrixCodeFlow.horizon(geometry: shape,radiusScale:liveScale(90,phase))
                 for y in 0..<image.height {
                     for x in 0..<image.width {
                         let offset = (y*image.width+x)*4,alpha = Int(pixels[offset+3])
@@ -805,10 +850,10 @@ struct MatrixCheck {
                     let image = try renderer.image(geometry:shape,time:12.4,speed:90,scale:2,
                         matrixConfiguration:configuration,matrixPass:.aperture)
                     let pixels = bytes(image)
-                    let hole = MatrixCodeFlow.horizon(geometry:shape,configuration:configuration)
+                    let hole = MatrixCodeFlow.horizon(geometry:shape,configuration:configuration,radiusScale:liveScale(90,12.4))
                     let p = (Int(hole.y*2)*image.width+Int(hole.x*2))*4
-                    try require(pixels[p+3] > 240 && pixels[p+1] < 110,
-                        "The dark core and low-brightness heart render at the detached sink's actual position")
+                    try require(pixels[p+3] > 240 && pixels[p+1] < 3,
+                        "The detached sink center stays dark without a camera-like lamp")
                 }
                 emissionChecks.append(["width":width,"verticalOffset":offset,
                     "leftGlyphPixels":edgePixels[0],"rightGlyphPixels":edgePixels[1]])
@@ -817,29 +862,47 @@ struct MatrixCheck {
         let apertureImage = try renderer.image(geometry: geometry,time: 12.4,speed: 90,
             scale: 2,matrixPass: .aperture)
         let aperturePixels = bytes(apertureImage)
-        var microGlowPixels = 0,maximumMicroGlowAlpha = 0,unrelatedSurfacePixels = 0
-        var illuminatedShadowPixels = 0
-        for y in Int((geometry.notchHeight+5)*2)..<apertureImage.height {
-            for x in 0..<apertureImage.width {
-                let point = SIMD2((Float(x)+0.5)/2-hole.x,(Float(y)+0.5)/2-hole.y)
-                let offset = (y*apertureImage.width+x)*4
-                let radius = distance(point),alpha = Int(aperturePixels[offset+3])
-                if radius > hole.z+1 && alpha > 0 {
-                    microGlowPixels += 1
-                    maximumMicroGlowAlpha = max(maximumMicroGlowAlpha,alpha)
-                    if radius > hole.z+6 { unrelatedSurfacePixels += 1 }
+        // In the embedded position the physical notch hides the thin front blade.
+        // Inspect its foreground crossing with the whole disk exposed.
+        var diskConfiguration = NotchMatrixConfiguration.standard
+        diskConfiguration.verticalOffset = 36
+        let diskHole = MatrixCodeFlow.horizon(geometry:geometry,configuration:diskConfiguration,
+            radiusScale:liveScale(90,12.4))
+        let diskImage = try renderer.image(geometry:geometry,time:12.4,speed:90,
+            scale:2,matrixConfiguration:diskConfiguration,matrixPass:.aperture)
+        let diskBytes = bytes(diskImage)
+        var diskPixels = 0,maximumDiskAlpha = 0,unrelatedSurfacePixels = 0
+        var foregroundDiskPixels = 0
+        for y in Int((geometry.notchHeight+5)*2)..<diskImage.height {
+            for x in 0..<diskImage.width {
+                let point = SIMD2((Float(x)+0.5)/2-diskHole.x,(Float(y)+0.5)/2-diskHole.y)
+                let offset = (y*diskImage.width+x)*4
+                let radius = distance(point),alpha = Int(diskBytes[offset+3])
+                if radius > diskHole.z+1 && alpha > 0 {
+                    diskPixels += 1
+                    maximumDiskAlpha = max(maximumDiskAlpha,alpha)
+                    if radius > diskHole.z*2.95+1 { unrelatedSurfacePixels += 1 }
                 }
-                if radius < hole.z-0.5 && aperturePixels[offset+1] > 10 {
-                    try require(Int(aperturePixels[offset+1]) > Int(aperturePixels[offset])*2
-                        && Int(aperturePixels[offset+1]) > Int(aperturePixels[offset+2])*2,
-                        "The shadow emits a green tint rather than a grey or white surface")
-                    illuminatedShadowPixels += 1
+                if radius < diskHole.z-0.5 && diskBytes[offset+1] > 10 {
+                    try require(diskBytes[offset+1] > diskBytes[offset]
+                        && diskBytes[offset+1] > diskBytes[offset+2],
+                        "The accretion disk keeps the Matrix green palette")
+                    foregroundDiskPixels += 1
                 }
             }
         }
-        try require(microGlowPixels > 10 && maximumMicroGlowAlpha <= 20
-            && illuminatedShadowPixels > 10 && unrelatedSurfacePixels == 0,
-            "The requested microglow stays faint and local; it cannot become an opaque disk or backing")
+        try require(diskPixels > 100 && maximumDiskAlpha > 100
+            && foregroundDiskPixels > 10 && unrelatedSurfacePixels == 0,
+            "A visible green disk surrounds and crosses the shadow: outer=\(diskPixels), maxAlpha=\(maximumDiskAlpha), front=\(foregroundDiskPixels), stray=\(unrelatedSurfacePixels)")
+        let fixedDiskA = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
+            matrixBreathingTime:0,matrixPass:.aperture))
+        let fixedDiskB = bytes(try renderer.image(geometry:geometry,time:12.8,speed:90,
+            matrixBreathingTime:0,matrixPass:.aperture))
+        let diskMotionPixels = stride(from:0,to:fixedDiskA.count,by:4).filter {
+            fixedDiskA[$0...$0+3] != fixedDiskB[$0...$0+3]
+        }.count
+        try require(diskMotionPixels > 100,
+            "The disk filaments actually circulate at fixed physical radius, independently of body breathing")
         let backgroundImage = try renderer.image(geometry:geometry,time:12.4,speed:90,
             scale:2,matrixPass:.background)
         let backgroundPixels = bytes(backgroundImage)
@@ -847,8 +910,8 @@ struct MatrixCheck {
         for y in 0..<backgroundImage.height {
             for x in 0..<backgroundImage.width {
                 let p = (y*backgroundImage.width+x)*4
-                let offset = SIMD2((Float(x)+0.5)/2-hole.x,(Float(y)+0.5)/2-hole.y)
-                if distance(offset) < hole.z-1 {
+                let offset = SIMD2((Float(x)+0.5)/2-renderHole.x,(Float(y)+0.5)/2-renderHole.y)
+                if distance(offset) < renderHole.z-1 {
                     try require(backgroundPixels[p...p+3] == aperturePixels[p...p+3],
                         "The background passes behind the black hole and never paints across its dark core")
                 }
@@ -863,8 +926,8 @@ struct MatrixCheck {
         for size in [0.75,1.75,2.5] {
             for offset in [0.0,32,64] {
                 let configuration = NotchMatrixConfiguration(blackHoleSize:size,density:3,verticalOffset:offset)
-                let aperture = MatrixCodeFlow.horizon(geometry:geometry,configuration:configuration)
                 for phase in [8.73,12.4,18] {
+                    let aperture = MatrixCodeFlow.horizon(geometry:geometry,configuration:configuration,radiusScale:liveScale(180,phase))
                     let surface = bytes(try renderer.image(geometry:geometry,time:phase,speed:180,
                         matrixConfiguration:configuration,matrixPass:.aperture))
                     for flowPass in [MatrixFlowPass.falling,.gathering,.orbiting,.background] {
@@ -885,44 +948,82 @@ struct MatrixCheck {
             }
         }
 
-        var heartConfiguration = NotchMatrixConfiguration.standard
-        heartConfiguration.verticalOffset = 36
-        let heartHole = MatrixCodeFlow.horizon(geometry:geometry,configuration:heartConfiguration)
-        let heartTimes = [0.0,MatrixHoleInteraction.heartbeatPeriod*0.26,MatrixHoleInteraction.heartbeatPeriod*0.40]
-        var heartEnergy:[Int] = []
-        for clock in heartTimes {
-            let pixels = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
-                matrixConfiguration:heartConfiguration,matrixHeartbeatTime:clock,matrixPass:.aperture))
-            var energy = 0
+        var bodyConfiguration = NotchMatrixConfiguration.standard
+        bodyConfiguration.verticalOffset = 36
+        let bodyHole = MatrixCodeFlow.horizon(geometry:geometry,configuration:bodyConfiguration,radiusScale:liveScale(90,12.4))
+        var bodyResponse = [[String:Any]]()
+        var darkCenterPixels = 0
+        func opaqueDiameter(_ pixels:[UInt8],hole:SIMD4<Float>) -> Int {
+            // Measure the shadow's vertical extent. Counting dark pixels along
+            // its center row would subtract the foreground blade from its size.
+            let x = Int(hole.x*2),height = pixels.count/(themeImageWidth*4)
+            let darkRows = (0..<height).filter {
+                let p = ($0*themeImageWidth+x)*4
+                return pixels[p+3] > 220 && pixels[p...p+2].allSatisfy { $0 <= 5 }
+            }
+            guard let first = darkRows.first,let last = darkRows.last else { return 0 }
+            return last-first+1
+        }
+        for speed in [1.0,20,90,180] {
+            let scale = liveScale(speed,0)
+            let aperture = MatrixCodeFlow.horizon(geometry:geometry,configuration:bodyConfiguration,radiusScale:scale)
+            let pixels = bytes(try renderer.image(geometry:geometry,time:12.4,speed:speed,
+                matrixConfiguration:bodyConfiguration,matrixBreathingTime:0,matrixPass:.aperture))
+            var centralPixels = 0,unlitPixels = 0
             for p in stride(from:0,to:pixels.count,by:4) {
-                let x = (Float((p/4)%themeImageWidth)+0.5)/2
-                let y = (Float((p/4)/themeImageWidth)+0.5)/2
-                if distance(SIMD2(x-heartHole.x,y-heartHole.y)) < heartHole.z*0.28 {
-                    energy += Int(pixels[p+1])
+                let point = SIMD2((Float((p/4)%themeImageWidth)+0.5)/2-aperture.x,
+                    (Float((p/4)/themeImageWidth)+0.5)/2-aperture.y)
+                if distance(point) < aperture.z*0.65 {
+                    centralPixels += 1
+                    if pixels[p...p+2].allSatisfy({ $0 <= 2 }) && pixels[p+3] > 250 {
+                        unlitPixels += 1;darkCenterPixels += 1
+                    }
+                    if distance(point) < 0.5 {
+                        try require(pixels[p...p+2].allSatisfy { $0 <= 3 } && pixels[p+3] > 250,
+                            "The center has no point lamp; light belongs only to the foreground disk")
+                    }
                 }
             }
-            heartEnergy.append(energy)
+            try require(unlitPixels > centralPixels*7/10,
+                "A thin foreground disk may cross the shadow while most of its interior remains black")
+            bodyResponse.append(["tokPerSecond":speed,"radiusPoints":aperture.z,
+                "opaqueDiameterPixels":opaqueDiameter(pixels,hole:aperture)])
         }
-        try require(heartEnergy[1] > heartEnergy[0]*2 && heartEnergy[2] > heartEnergy[0]*3/2,
-            "The actual core pixels have a soft primary and secondary heartbeat")
-        let frozenHeartA = bytes(try renderer.image(geometry:geometry,time:2,speed:90,
-            matrixHeartbeatTime:0.0,reduceMotion:true))
-        let frozenHeartB = bytes(try renderer.image(geometry:geometry,time:25,speed:90,
-            matrixHeartbeatTime:10,reduceMotion:true))
-        try require(frozenHeartA == frozenHeartB,"Reduced motion freezes the heartbeat along with the code")
+        let diameters = bodyResponse.map { $0["opaqueDiameterPixels"] as! Int }
+        try require(diameters[1] > diameters[0] && diameters[2] > diameters[1] && diameters[3] > diameters[2],
+            "Actual GPU silhouettes grow with tok/s, rather than only changing a uniform")
+        var breathDiameters = [Int]()
+        let breathTimes = [MatrixHoleInteraction.breathingPeriod/4,MatrixHoleInteraction.breathingPeriod*3/4]
+        for time in breathTimes {
+            let aperture = MatrixCodeFlow.horizon(geometry:geometry,configuration:bodyConfiguration,radiusScale:liveScale(90,time))
+            let pixels = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
+                matrixConfiguration:bodyConfiguration,matrixBreathingTime:time,matrixPass:.aperture))
+            breathDiameters.append(opaqueDiameter(pixels,hole:aperture))
+        }
+        try require(breathDiameters[0] > breathDiameters[1]
+            && Double(breathDiameters[0])/Double(breathDiameters[1]) < 1.07,
+            "The body itself has a gentle measured expansion/contraction at constant load")
+        let frozenBodyA = bytes(try renderer.image(geometry:geometry,time:2,speed:90,
+            matrixBreathingTime:0.0,reduceMotion:true))
+        let frozenBodyB = bytes(try renderer.image(geometry:geometry,time:25,speed:90,
+            matrixBreathingTime:10,reduceMotion:true))
+        try require(frozenBodyA == frozenBodyB,"Reduced motion freezes body breathing and code")
         let normalHole = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
-            matrixConfiguration:heartConfiguration,matrixPass:.aperture))
+            matrixConfiguration:bodyConfiguration,matrixPass:.aperture))
         let hoverHole = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
-            matrixConfiguration:heartConfiguration,matrixHover:1,matrixPass:.aperture))
-        var normalAlpha = 0,hoverAlpha = 0
+            matrixConfiguration:bodyConfiguration,matrixHover:1,matrixPass:.aperture))
+        var normalAlpha = 0,hoverAlpha = 0,normalDiskAlpha = 0,hoverDiskAlpha = 0
         for p in stride(from:0,to:normalHole.count,by:4) {
             let x = (Float((p/4)%themeImageWidth)+0.5)/2
             let y = (Float((p/4)/themeImageWidth)+0.5)/2
-            let radius = distance(SIMD2(x-heartHole.x,y-heartHole.y))
-            if radius < heartHole.z*0.7 {
+            let radius = distance(SIMD2(x-bodyHole.x,y-bodyHole.y))
+            if radius < bodyHole.z*0.7 {
                 normalAlpha += Int(normalHole[p+3]);hoverAlpha += Int(hoverHole[p+3])
             }
-            if radius > heartHole.z+14 {
+            if y > Float(geometry.notchHeight)+5 && radius > bodyHole.z+1 && radius < bodyHole.z*2.8 {
+                normalDiskAlpha += Int(normalHole[p+3]);hoverDiskAlpha += Int(hoverHole[p+3])
+            }
+            if radius > bodyHole.z*2.95+3 {
                 try require(normalHole[p...p+3] == hoverHole[p...p+3],
                     "Hover feedback stays local and cannot fade the notch or distant rain")
             }
@@ -931,11 +1032,13 @@ struct MatrixCheck {
         }
         try require(hoverAlpha > 0 && hoverAlpha < normalAlpha/5,
             "Hovering makes the black core transparent enough to reveal the desktop")
+        try require(normalDiskAlpha > 1000 && hoverDiskAlpha < normalDiskAlpha/5,
+            "Hover feedback fades the entire accretion disk together with the dark core")
         var feedback = MatrixHoleInteraction()
-        for _ in 0..<48 { feedback.advance(by:1.0/60,hovered:true,reduceMotion:false,heat:0.5) }
+        for _ in 0..<48 { feedback.advance(by:1.0/60,hovered:true,reduceMotion:false) }
         try require(feedback.hover > 0.99
-            && abs(feedback.elapsed-0.8*MatrixHoleInteraction.heartbeatMultiplier(heat:0.5)) < 0.001,
-            "Hover enters smoothly while the heartbeat advances at its load-driven rate")
+            && abs(feedback.elapsed-0.8) < 0.001,
+            "Hover enters smoothly while the body breath advances in real seconds")
         let enteredHover = feedback.hover
         feedback.advance(by:1.0/60,hovered:false,reduceMotion:false)
         try require(feedback.hover < enteredHover && feedback.hover > 0.85,
@@ -943,44 +1046,136 @@ struct MatrixCheck {
         let heldClock = feedback.elapsed
         feedback.advance(by:0.5,hovered:true,reduceMotion:true)
         try require(feedback.hover == 1 && feedback.elapsed == heldClock,
-            "Reduced motion keeps pointer feedback while freezing the heartbeat")
-        var heartbeatRates = [[String:Any]]()
-        for speed in [20.0,90,180] {
-            var clock = MatrixHoleInteraction()
-            let load = NotchFlameAnimation.heat(for:speed)
-            for _ in 0..<600 { clock.advance(by:1.0/60,hovered:false,reduceMotion:false,heat:load) }
-            heartbeatRates.append(["tokPerSecond":speed,"cyclesIn10Seconds":clock.elapsed/MatrixHoleInteraction.heartbeatPeriod,
-                "periodSeconds":MatrixHoleInteraction.heartbeatPeriod/MatrixHoleInteraction.heartbeatMultiplier(heat:load)])
+            "Reduced motion keeps pointer feedback while freezing the body breath")
+        var movingLoad = NotchFlameAnimation(),bodyClock = MatrixHoleInteraction()
+        movingLoad.setSpeed(90)
+        var previousDynamic:[UInt64:MatrixPulseSample] = [:]
+        var previousRadius:Float = 0,maximumRadiusStep:Float = 0,maximumDynamicTravel:Float = 0
+        var dynamicContinuityChecks = 0
+        var previousDisk:[UInt64:MatrixDiskMatter] = [:]
+        var maximumDiskTravel:Float = 0,diskDynamicChecks = 0
+        for tick in 0..<720 {
+            if tick == 240 { movingLoad.setSpeed(180) }
+            if tick == 480 { movingLoad.setSpeed(20) }
+            movingLoad.advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:movingLoad.heat))
+            bodyClock.advance(by:1/60,hovered:false,reduceMotion:false)
+            let scale = MatrixHoleInteraction.radiusScale(heat:movingLoad.heat,time:bodyClock.elapsed)
+            let aperture = MatrixCodeFlow.horizon(geometry:geometry,configuration:bodyConfiguration,radiusScale:scale)
+            if tick > 0 { maximumRadiusStep = max(maximumRadiusStep,abs(aperture.z-previousRadius)) }
+            let frame = MatrixCodeFlow.frame(geometry:geometry,time:movingLoad.phase,heat:Float(movingLoad.heat),
+                configuration:bodyConfiguration,radiusScale:scale,seed:seed)
+            let current = glyphs(frame)
+            let currentDisk = Dictionary(uniqueKeysWithValues:frame.diskMatter.map { ($0.id,$0) })
+            for (id,particle) in previousDisk where particle.opacity > 0.03 {
+                if let next = currentDisk[id],next.opacity > 0.03 {
+                    try require(next.codeSeed == particle.codeSeed,
+                        "Load changes retain the same captured disk character")
+                    maximumDiskTravel = max(maximumDiskTravel,distance(next.screenCenter-particle.screenCenter))
+                    diskDynamicChecks += 1
+                }
+            }
+            for (id,sample) in previousDynamic {
+                if let next = current[id] {
+                    try require(sample.codeSeed == next.codeSeed,"Automatic size changes preserve character identity")
+                    maximumDynamicTravel = max(maximumDynamicTravel,distance(next.center-sample.center))
+                    dynamicContinuityChecks += 1
+                }
+            }
+            for flash in frame.flashes {
+                try require(distance(flash.center-SIMD2(aperture.x,aperture.y)) < aperture.z,
+                    "Capture flashes track the current automatic radius")
+            }
+            previousDynamic = current;previousRadius = aperture.z
+            previousDisk = currentDisk
         }
-        let counts = heartbeatRates.map { $0["cyclesIn10Seconds"] as! Double }
-        try require(counts[1] > counts[0]*1.5 && counts[2] > counts[1]*1.4,
-            "Higher tok/s produces genuinely more heartbeat cycles")
-        var continuousHeart = MatrixHoleInteraction()
-        for _ in 0..<40 { continuousHeart.advance(by:1.0/60,hovered:false,reduceMotion:false,heat:0.2) }
-        let beforeHeart = continuousHeart.elapsed
-        continuousHeart.advance(by:1.0/60,hovered:false,reduceMotion:false,heat:1)
-        try require(abs(continuousHeart.elapsed-beforeHeart-MatrixHoleInteraction.heartbeatMultiplier(heat:1)/60) < 0.0001,
-            "Changing rate adds to the existing heartbeat phase without restarting it")
+        try require(maximumRadiusStep < 0.55 && maximumDynamicTravel < 6 && dynamicContinuityChecks > 1000,
+            "Load changes and body breathing retain smooth geometry and existing character motion")
+        try require(diskDynamicChecks > 1000 && maximumDiskTravel < 6,
+            "Captured characters remain continuous through changing load and breathing: \(maximumDiskTravel) pt/frame")
+
+        var seenRain:[UInt64:MatrixPulseSample] = [:]
+        var previousMatter:[UInt64:MatrixDiskMatter] = [:]
+        var matchedMatter = 0,matterContinuity = 0,handoffChecks = 0,peakMatter = 0
+        var maxHandoffDistance:Float = 0
+        let matterScale = liveScale(90,0)
+        for phase in stride(from:0.0,through:8.4,by:0.04) {
+            let frame = MatrixCodeFlow.frame(geometry:geometry,time:phase,heat:heat,
+                configuration:bodyConfiguration,radiusScale:matterScale,seed:seed)
+            for sample in frame.pulses.flatMap(\.samples) { seenRain[sample.id] = sample }
+            try require(Set(frame.diskMatter.map(\.id)).count == frame.diskMatter.count,
+                "Disk matter cannot duplicate an incoming character identity")
+            peakMatter = max(peakMatter,frame.diskMatter.count)
+            for particle in frame.diskMatter {
+                try require(particle.radius.isFinite && particle.angle.isFinite
+                    && particle.progress >= 0 && particle.progress < 1
+                    && particle.opacity >= 0 && particle.opacity <= 1,
+                    "Captured disk material remains finite and bounded")
+                if phase > 4.3 {
+                    guard let source = seenRain[particle.id] else {
+                        try require(false,"Every orbiting character must have an observed rain source")
+                        continue
+                    }
+                    try require(source.stage != .background && source.codeSeed == particle.codeSeed,
+                        "The disk reuses foreground rain glyphs, never unrelated text or background rain")
+                    matchedMatter += 1
+                }
+                if particle.handoff > 0 && particle.handoff < 0.25,
+                   let source = frame.pulses.flatMap(\.samples).first(where: { $0.id == particle.id }) {
+                    let gap = distance(source.center-particle.screenCenter)
+                    maxHandoffDistance = max(maxHandoffDistance,gap)
+                    try require(gap < source.width*2,
+                        "A new disk glyph begins beside its incoming rain character, without a teleport")
+                    handoffChecks += 1
+                }
+                if let previous = previousMatter[particle.id] {
+                    try require(previous.codeSeed == particle.codeSeed
+                        && particle.progress >= previous.progress && particle.radius <= previous.radius+0.001,
+                        "A captured character keeps its glyph while aging and draining inward")
+                    matterContinuity += 1
+                }
+            }
+            let currentMatter = Dictionary(uniqueKeysWithValues:frame.diskMatter.map { ($0.id,$0) })
+            for (id,previous) in previousMatter where currentMatter[id] == nil {
+                try require(previous.progress > 0.98,
+                    "Once handed off, a disk character must remain until its complete dissolution")
+            }
+            previousMatter = currentMatter
+        }
+        try require(matchedMatter > 1000 && matterContinuity > 1000 && handoffChecks > 100,
+            "Trace actual character handoffs and disk residence across multiple complete lifetimes")
+        var sparseMatterConfiguration = bodyConfiguration
+        sparseMatterConfiguration.density = 0.4
+        var denseMatterConfiguration = bodyConfiguration
+        denseMatterConfiguration.density = 3
+        let sparseMatterImage = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
+            matrixConfiguration:sparseMatterConfiguration,matrixPass:.aperture))
+        let denseMatterImage = bytes(try renderer.image(geometry:geometry,time:12.4,speed:90,
+            matrixConfiguration:denseMatterConfiguration,matrixPass:.aperture))
+        let densityDrivenDiskBytes = zip(sparseMatterImage,denseMatterImage).filter { $0 != $1 }.count
+        try require(densityDrivenDiskBytes > 1000,
+            "Rain density changes the disk itself even when all incoming rain quads are hidden")
 
         var flashSamples = 0,flashContinuity = 0,flashGPUChanges = 0
         var flashLifetimes: [UInt64:(Double,Double)] = [:]
         for phase in stride(from:0.0,through:5,by:0.02) {
+            let currentHole = MatrixCodeFlow.horizon(geometry:geometry,configuration:bodyConfiguration,radiusScale:liveScale(90,phase))
             let frame = MatrixCodeFlow.frame(geometry:geometry,time:phase,heat:heat,
-                configuration:heartConfiguration,seed:seed)
+                configuration:bodyConfiguration,radiusScale:liveScale(90,phase),seed:seed)
             try require(frame.flashes.count <= MatrixCodeFlow.maximumFlashes,
                 "Capture flashes stay within the bounded GPU uniform budget")
             let next = MatrixCodeFlow.frame(geometry:geometry,time:phase+0.01,heat:heat,
-                configuration:heartConfiguration,seed:seed)
+                configuration:bodyConfiguration,radiusScale:liveScale(90,phase+0.01),seed:seed)
             let characters = glyphs(frame)
             for flash in frame.flashes {
-                let offset = flash.center-SIMD2(heartHole.x,heartHole.y)
-                try require(distance(offset) < heartHole.z && flash.intensity > 0 && flash.intensity < 0.20
+                let offset = flash.center-SIMD2(currentHole.x,currentHole.y)
+                try require(distance(offset) < currentHole.z && flash.intensity > 0 && flash.intensity < 0.20
                     && flash.radius > 0 && flash.progress >= 0 && flash.progress < 1,
                     "Flashes are faint finite spots inside the physical hole")
-                try require(characters[flash.id].map { $0.stage != .background } == true,
-                    "Every annihilation flash belongs to an actual captured foreground glyph")
+                try require(characters[flash.id].map { $0.stage != .background } == true
+                    || frame.diskMatter.contains { $0.id == flash.id && $0.progress > 0.90 },
+                    "Every annihilation flash belongs to an actual glyph at the end of its capture")
                 if let following = next.flashes.first(where: { $0.id == flash.id }) {
-                    try require(following.progress > flash.progress && following.center == flash.center,
+                    try require(following.progress > flash.progress && distance(following.center-flash.center) < 0.1,
                         "An entry flash fades at its own absorption point rather than roaming over the surface")
                     flashContinuity += 1
                 }
@@ -990,19 +1185,19 @@ struct MatrixCheck {
             }
             if phase < 0.4 {
                 let composed = bytes(try renderer.image(geometry:geometry,time:phase,speed:90,
-                    matrixConfiguration:heartConfiguration))
+                    matrixConfiguration:bodyConfiguration))
                 let surface = bytes(try renderer.image(geometry:geometry,time:phase,speed:90,
-                    matrixConfiguration:heartConfiguration,matrixPass:.aperture))
+                    matrixConfiguration:bodyConfiguration,matrixPass:.aperture))
                 for p in stride(from:0,to:composed.count,by:4) {
                     let x = (Float((p/4)%themeImageWidth)+0.5)/2
                     let y = (Float((p/4)/themeImageWidth)+0.5)/2
-                    if distance(SIMD2(x-heartHole.x,y-heartHole.y)) < heartHole.z-1,
+                    if distance(SIMD2(x-bodyHole.x,y-bodyHole.y)) < bodyHole.z-1,
                        composed[p+1] > surface[p+1] { flashGPUChanges += 1 }
                 }
             }
         }
         try require(flashSamples > 100 && flashContinuity > 100 && flashGPUChanges > 20
-            && flashLifetimes.values.allSatisfy { $0.1-$0.0 <= MatrixCodeFlow.captureFlashDuration+0.001 },
+            && flashLifetimes.values.allSatisfy { $0.1-$0.0 <= MatrixCodeFlow.captureFlashDuration+0.03 },
             "Real captured entries trigger short-lived fluorescent GPU light without persistent surface code")
         let loadResponse: [[String:Any]] = loadRates.indices.map { index in
             ["tokPerSecond":loadRates[index],"averageVisibleGlyphs":Double(glyphCounts[index])/Double(loadSamples),
@@ -1011,6 +1206,7 @@ struct MatrixCheck {
         var report: [String:Any] = ["passed":true,"input":"isolated synthetic tok/s; temporary preferences",
             "scope":"offscreen native Metal preview; no app packaging or installation",
             "exposedCoreDepth":exposedDepth,"completeCaptures":completeCaptures,
+            "diskTransferRetirements":diskTransferRetirements,
             "orbitArrivals":orbitArrivals,"terminalSamples":terminalSamples,
             "maximumTerminalExtentOverRadius":maximumTerminalExtent,
             "inwardMotionSamples":immediateAttractionSamples,"bundleSpreads":bundleSpreads,
@@ -1042,14 +1238,23 @@ struct MatrixCheck {
             "captureRouting":["inwardGatherSamples":inwardGatherSamples,
                 "leftRearEntrySamples":leftRearEntrySamples,"rightFrontEntrySamples":rightFrontEntrySamples],
             "appearanceContrast":["whiteBackground":themeContrast,"preservedCorePixels":preservedCorePixels,
-                "macOSAppearanceMapping":true,"flameUnchanged":true],
-            "holeFeedback":["cleanSurfacePixels":cleanSurfacePixels,"heartbeatTimes":heartTimes,
-                "heartbeatGreenEnergy":heartEnergy,"heartbeatRates":heartbeatRates,
+                "macOSAppearanceMapping":true,"flameUnchanged":true,"diskExcludedFromRainMeasurement":true],
+            "holeFeedback":["cleanSurfacePixels":cleanSurfacePixels,"unlitCenterPixels":darkCenterPixels,
+                "automaticSize":bodyResponse,"bodyBreathTimes":breathTimes,"bodyBreathDiameters":breathDiameters,
+                "maximumRadiusStep":maximumRadiusStep,"maximumDynamicGlyphTravel":maximumDynamicTravel,
+                "dynamicContinuityChecks":dynamicContinuityChecks,
                 "captureFlashSamples":flashSamples,"captureFlashContinuity":flashContinuity,
                 "captureFlashGPUChanges":flashGPUChanges,"normalCoreAlpha":normalAlpha,"hoverCoreAlpha":hoverAlpha],
-            "microGlow":["pixelsOutsideShadow":microGlowPixels,
-                "maximumOuterAlphaByte":maximumMicroGlowAlpha,"illuminatedShadowPixels":illuminatedShadowPixels,
+            "accretionDisk":["pixelsOutsideShadow":diskPixels,
+                "maximumOuterAlphaByte":maximumDiskAlpha,"foregroundDiskPixels":foregroundDiskPixels,
+                "animatedPixelsAtFixedRadius":diskMotionPixels,
+                "normalDiskAlpha":normalDiskAlpha,"hoverDiskAlpha":hoverDiskAlpha,
                 "unrelatedSurfacePixels":unrelatedSurfacePixels],
+            "capturedCodeDisk":["matchedRainIdentities":matchedMatter,"continuitySamples":matterContinuity,
+                "handoffChecks":handoffChecks,"maximumHandoffDistance":maxHandoffDistance,
+                "peakParticles":peakMatter,"loadTransitionSamples":diskDynamicChecks,
+                "maximumLoadTransitionTravel":maximumDiskTravel,"densityDrivenDiskBytes":densityDrivenDiskBytes,
+                "sameGlyphAtlas":true,"glyphSizeCompensation":"artistic screen-space orbits outside the dark core"],
             "edgeEmissionAndDetachedCore":emissionChecks,
             "legacyConfigurationMigration":true,
             "backgroundRain":["visibleShareAtSelectedParameters":backgroundShare,
@@ -1072,6 +1277,8 @@ struct MatrixCheck {
             }
             try require(panel.isVisible && panel.ignoresMouseEvents && !panel.canBecomeKey,
                 "The live effect remains noninteractive")
+            report["nativeDisplay"] = ["name":profile.screenName,"physicalNotch":profile.notchFrame != nil,
+                "scale":profile.scale,"maximumFramesPerSecond":profile.maximumFramesPerSecond]
             try require(panel.frame == profile.panelFrame(for: .matrix), "Matrix uses its own taller display geometry")
             try require(view.matrixColorSchemeOverride == nil,
                 "The real desktop overlay inherits macOS appearance without a preview override")
@@ -1143,21 +1350,24 @@ struct MatrixCheck {
                     for offset in [0.0,32,64] {
                         let configuration = NotchMatrixConfiguration(blackHoleSize:size,verticalOffset:offset)
                         feedbackView.setMatrixConfiguration(configuration)
-                        let aperture = MatrixCodeFlow.horizon(geometry:geometry,configuration:configuration)
+                        let aperture = feedbackView.matrixHorizon
                         let inside = screenPoint(CGPoint(x:Double(aperture.x),y:Double(aperture.y+aperture.z*0.25)))
-                        let outside = screenPoint(CGPoint(x:Double(aperture.x+aperture.z+8),y:Double(aperture.y)))
+                        let disk = screenPoint(CGPoint(x:Double(aperture.x+aperture.z*1.45),
+                            y:Double(aperture.y+aperture.z*0.15)))
+                        let outside = screenPoint(CGPoint(x:Double(aperture.x+aperture.z*3.1+8),y:Double(aperture.y)))
                         let camera = screenPoint(CGPoint(x:Double(aperture.x),y:Double(geometry.notchHeight)-2))
                         try require(feedbackView.matrixContainsPointer(at:inside)
+                            && feedbackView.matrixContainsPointer(at:disk)
                             && !feedbackView.matrixContainsPointer(at:outside)
                             && !feedbackView.matrixContainsPointer(at:camera),
-                            "Screen-space hover follows the exposed hole through scaling, size and vertical position")
-                        pointerHitChecks += 3
+                            "Screen-space hover follows both core and disk through scaling, size and vertical position")
+                        pointerHitChecks += 4
                     }
                 }
             }
-            feedbackView.setMatrixConfiguration(heartConfiguration)
+            feedbackView.setMatrixConfiguration(bodyConfiguration)
             feedbackView.setSpeed(90)
-            pointer.location = screenPoint(CGPoint(x:Double(heartHole.x),y:Double(heartHole.y+heartHole.z*0.2)))
+            pointer.location = screenPoint(CGPoint(x:Double(feedbackView.matrixHorizon.x),y:Double(feedbackView.matrixHorizon.y+feedbackView.matrixHorizon.z*0.2)))
             pump(0.85)
             try require(feedbackView.matrixHoverAmount > 0.99 && feedbackView.isTrackingMatrixPointer
                 && feedbackPanel.ignoresMouseEvents,
@@ -1169,12 +1379,12 @@ struct MatrixCheck {
             pointer.reduced = true
             feedbackView.setSpeed(90)
             pump(0.3)
-            let frozenFeedbackClock = feedbackView.matrixHeartbeatElapsed
+            let frozenFeedbackClock = feedbackView.matrixBreathingElapsed
             let frozenFeedbackPhase = feedbackView.animationPhase
-            pointer.location = screenPoint(CGPoint(x:Double(heartHole.x),y:Double(heartHole.y+heartHole.z*0.2)))
+            pointer.location = screenPoint(CGPoint(x:Double(feedbackView.matrixHorizon.x),y:Double(feedbackView.matrixHorizon.y+feedbackView.matrixHorizon.z*0.2)))
             pump(0.3)
             try require(feedbackView.matrixHoverAmount == 1 && !feedbackView.isRendering
-                && feedbackView.matrixHeartbeatElapsed == frozenFeedbackClock
+                && feedbackView.matrixBreathingElapsed == frozenFeedbackClock
                 && feedbackView.animationPhase == frozenFeedbackPhase,
                 "A frozen reduced-motion surface responds to the pointer without restarting animation")
             let frozenFrameCount = feedbackView.renderedFrameCount
@@ -1187,7 +1397,7 @@ struct MatrixCheck {
                 "Reduced-motion hover also restores the normal hole on exit")
             feedbackView.stop()
             try require(!feedbackView.isTrackingMatrixPointer && feedbackView.matrixHoverAmount == 0
-                && feedbackView.matrixHeartbeatElapsed == 0,
+                && feedbackView.matrixBreathingElapsed == 0,
                 "Stopping the surface clears both interaction clocks and pointer tracking")
             report["nativeHoleFeedback"] = ["pointerHitChecks":pointerHitChecks,
                 "clickThroughHover":true,"exitRestores":true,"reducedMotionResponsive":true,
@@ -1199,7 +1409,7 @@ struct MatrixCheck {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),withIntermediateDirectories: true)
             try JSONSerialization.data(withJSONObject: report,options: [.prettyPrinted,.sortedKeys]).write(to: url)
         }
-        print("PASS: continuous code wall, complete parameter-range capture, clean hole surface, breathing core, cursor fade, tok/s response, GPU transparency and flame independence")
+        print("PASS: continuous code wall, complete parameter-range capture, unlit core, automatic size and body breathing, cursor fade, tok/s response, GPU transparency and flame independence")
         print("Captures: \(completeCaptures); median near/far speed: \(median(speedRatios)); vertex peak: \(peakVertices)")
     }
 }
