@@ -4,6 +4,8 @@ macOS 菜单栏 Agent 测速宠物。首次默认显示原创胖黑猫。左/右
 
 **Token 检测与测速核心来自 [Agent Speed](https://github.com/zoefix/agent-speed)**，使用其 `AgentSpeedCore` 读取本地会话记录并计算输出速率。感谢原项目作者；相关代码遵循 MIT 许可，原始版权与许可声明保留于 [Vendor/AGENT-SPEED-LICENSE](Vendor/AGENT-SPEED-LICENSE)，所用版本见 [上游记录](Vendor/UPSTREAM.md)。EmberCat 在此基础上增加菜单栏宠物、刘海火焰和 Dock 互动。
 
+**特别感谢 [s13k（@s0xDk）](https://github.com/s0xDk) 开源 [Ghostty Blackhole](https://github.com/s0xDk/ghostty-blackhole)**。EmberCat 的 Matrix 黑洞参考了其光线弯曲与吸积盘渲染实现。感谢作者分享代码和创意，让我们能在此基础上探索代码雨融入黑洞的效果。原项目采用 MIT 许可，完整版权声明见 [Vendor/GHOSTTY-BLACKHOLE-LICENSE](Vendor/GHOSTTY-BLACKHOLE-LICENSE)，参考版本和改编范围见 [上游记录](Vendor/GHOSTTY-BLACKHOLE.md)。
+
 ## 发布与下载
 
 当前版本为 **0.6.21 / build 37**，Matrix 字符接入吸积盘并形成光带，黑洞大小随 tok/s 变化，保留本体呼吸和鼠标虚化。安装包到 [GitHub Releases](https://github.com/johann15910358798-lab/EmberCat/releases/latest) 下载，功能与安装说明见 [0.6.21 发布说明](docs/releases/0.6.21.md)。Git 仓库保存源码、原画及生成资源；本地 `dist/` 和 `work/` 不进入源码仓库。
