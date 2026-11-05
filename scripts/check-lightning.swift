@@ -280,12 +280,13 @@ struct LightningCheck {
             "The new effect persists without changing prior configuration")
         var native = false
         var controlReport: [String:Any] = [:]
+        var hoverReport: [String:Any] = [:]
         if CommandLine.arguments.contains("--native") {
             let controller = NotchFlameController(settings: settings)
             defer { controller.shutdown() }
             controller.update(speed: 90)
             pump(0.6)
-            guard let panel = NSApp.windows.first(where: { $0.title == "EmberCat · 柱状闪电" }),
+            guard let panel = NSApp.windows.first(where: { $0.title == "EmberCat · \(NotchEffectStyle.lightning.title)" }),
                   let view = panel.contentView as? NotchFlameMetalView else {
                 try require(false, "The native lightning overlay is created")
                 return
@@ -338,6 +339,7 @@ struct LightningCheck {
             settings.setLightningConfiguration(.standard)
             pump()
             controller.shutdown()
+            hoverReport = try checkLightningHover(renderer: renderer)
 
             func descendants(_ node: NSView) -> [NSView] { [node]+node.subviews.flatMap(descendants) }
             let preview = try NotchFlamePreviewController(settings: settings, effect: .lightning)
@@ -353,6 +355,7 @@ struct LightningCheck {
             let apply = nodes.first { $0.accessibilityIdentifier() == "notch-preview-apply-effect" } as! NSButton
             let controls = nodes.compactMap { $0 as? NotchLightningControls }.first!
             try require(selector.selectedSegment == 2 && scenes.count == 3
+                && selector.label(forSegment: 2) == "仓鼠发电机"
                 && scenes.allSatisfy { $0.effect == .lightning && !$0.isHiddenOrHasHiddenAncestor },
                 "The third segment selects all three native lightning samples")
             try require(slider.maxValue == 180 && content.bounds.contains(apply.convert(apply.bounds,to: content)),
@@ -382,6 +385,32 @@ struct LightningCheck {
                 content.layoutSubtreeIfNeeded()
                 pump(0.18)
             }
+            let fixedWindowFrame = preview.window!.frame
+            let fixedSceneSizes = scenes.map { $0.superview!.bounds.size }
+            func checkFixedLayout(_ step: String) throws {
+                try require(preview.window!.frame == fixedWindowFrame,
+                    "\(step): parameter edits keep the settings window fixed; before=\(fixedWindowFrame), after=\(preview.window!.frame)")
+                for (index, scene) in scenes.enumerated() {
+                    let container = scene.superview!
+                    try require(container.bounds.size == fixedSceneSizes[index]
+                        && container.bounds.insetBy(dx: -0.5, dy: -0.5).contains(scene.frame),
+                        "\(step): the entire effect fits inside its fixed preview card")
+                }
+                try require(([apply] as [NSView] + tuningSliders).allSatisfy {
+                    content.bounds.contains($0.convert($0.bounds, to: content))
+                }, "\(step): all controls and Save and Apply remain reachable")
+            }
+            for (index, parameter) in NotchLightningParameter.visibleCases.enumerated() {
+                let control = tuningSliders[index]
+                let saved = control.doubleValue
+                for value in [parameter.range.lowerBound, parameter.range.upperBound] {
+                    control.doubleValue = value
+                    change(control)
+                    try checkFixedLayout("\(parameter.title) at \(value)")
+                }
+                control.doubleValue = saved
+                change(control)
+            }
             for (index, control) in tuningSliders.enumerated() {
                 let previous = control.doubleValue
                 let parameter = NotchLightningParameter.visibleCases[index]
@@ -391,6 +420,7 @@ struct LightningCheck {
                 try require(control.doubleValue == fineValue
                     && scenes.allSatisfy { $0.lightningConfiguration[keyPath:parameter.keyPath] == fineValue },
                     "\(parameter.title) preserves fine slider changes without rounding them away")
+                try checkFixedLayout("Fine \(parameter.title) edit")
                 control.doubleValue = previous
                 change(control)
             }
@@ -414,8 +444,7 @@ struct LightningCheck {
                     && zip(scenes,oldSuspension).allSatisfy { $0.lightningElapsed >= $1 && $0.lightningElapsed-$1 < 1 }
                     && zip(scenes,oldHamsters).allSatisfy { $0.hamsterElapsed >= $1 && $0.hamsterElapsed-$1 < 1 },
                     "\(parameter.title) preserves all three running clocks")
-                try require(content.bounds.contains(apply.convert(apply.bounds,to:content)),
-                    "Expanded tuning layout keeps Save and Apply visible")
+                try checkFixedLayout("Combined \(parameter.title) edit")
             }
             let motionSwitch = nodes.first { $0.accessibilityIdentifier() == "lightning-motion-enabled" } as! NSButton
             motionSwitch.performClick(nil)
@@ -495,7 +524,9 @@ struct LightningCheck {
                 && settings.palette == savedPalette && settings.appearance == savedAppearance,
                 "Saving defaults preserves the other effects' settings")
             controlReport = ["sliders":7,"motionSwitch":true,"draftIsolation":true,"modeSwitchKeepsDraft":true,
-                "saveReloadReset":true,"liveGeometryUpdated":true,"fineSliderChanges":true,"cadence":cadence]
+                "saveReloadReset":true,"liveGeometryUpdated":true,"fineSliderChanges":true,"cadence":cadence,
+                "fixedWindowAcrossParameterExtremes":true,"fixedPreviewCards":true,
+                "settingsWindowFrame":NSStringFromRect(fixedWindowFrame)]
             preview.selectEffect(.flame)
             pump()
             try require(scenes.allSatisfy { $0.effect == .flame }, "Preview returns to the original flame")
@@ -518,6 +549,7 @@ struct LightningCheck {
         let report: [String: Any] = ["passed": true, "nativeChecks": native,
             "input": "isolated synthetic tok/s and temporary preferences; no production measurements changed",
             "stages": observations, "layerMotion": layerMotion, "tuning":tuningReport,"controls":controlReport,
+            "hover":hoverReport,
             "randomDischarges":randomReport,
             "hamsters":hamsterReport,
             "reduceMotion": true, "transparentMargins": true,
@@ -528,4 +560,138 @@ struct LightningCheck {
             try JSONSerialization.data(withJSONObject: report, options: [.prettyPrinted,.sortedKeys]).write(to: file)
         }
     }
+}
+
+@MainActor
+private final class LightningPointerFixture {
+    var location = CGPoint(x: -100_000, y: -100_000)
+    var reduced = false
+}
+
+@MainActor
+private func checkLightningHover(renderer: NotchFlameRenderer) throws -> [String:Any] {
+    func require(_ condition: Bool, _ message: String) throws {
+        guard condition else {
+            throw NSError(domain: "EmberCat.LightningHoverCheck", code: 1,
+                userInfo: [NSLocalizedDescriptionKey: message])
+        }
+    }
+    func pump(_ seconds: TimeInterval) {
+        RunLoop.main.run(until: Date().addingTimeInterval(seconds))
+    }
+    let pointer = LightningPointerFixture()
+    let geometry = NotchFlameGeometry(notchWidth: 180, notchHeight: 32, effect: .lightning)
+    let view = try NotchFlameMetalView(geometry: geometry, renderer: renderer,
+        mouseLocation: { pointer.location }, reduceMotion: { pointer.reduced })
+    let panel = NSPanel(contentRect: CGRect(origin: CGPoint(x: 120, y: 160), size: geometry.size),
+        styleMask: .borderless, backing: .buffered, defer: false)
+    panel.isOpaque = false
+    panel.backgroundColor = .clear
+    panel.ignoresMouseEvents = true
+    panel.contentView = view
+    panel.orderFrontRegardless()
+    defer { view.stop(); panel.close() }
+    func screenPoint(_ point: CGPoint) -> CGPoint {
+        let local = CGPoint(x: view.bounds.minX+point.x/view.geometry.size.width*view.bounds.width,
+            y: view.isFlipped ? view.bounds.minY+point.y/view.geometry.size.height*view.bounds.height
+                : view.bounds.maxY-point.y/view.geometry.size.height*view.bounds.height)
+        return panel.convertPoint(toScreen: view.convert(local, to: nil))
+    }
+    view.setSpeed(180)
+    pump(2)
+    var hitChecks = 0
+    for scale in [0.65, 1.0, 1.5] {
+        for configuration in [NotchLightningConfiguration.standard,
+            .init(thickness: 0.65, distance: 6, hamsterScale: 0.7, hamsterGap: 0),
+            .init(thickness: 1.45, distance: 36, levitation: 4, jitter: 2, hamsterScale: 1.5, hamsterGap: 24)] {
+            let shape = NotchFlameGeometry(notchWidth: 180, notchHeight: 32, effect: .lightning,
+                lightningConfiguration: configuration)
+            view.geometry = shape
+            view.setLightningConfiguration(configuration)
+            panel.setContentSize(NSSize(width: shape.size.width*scale, height: shape.size.height*scale))
+            let center = CGPoint(x: shape.notch.midX, y: shape.notchHeight+configuration.distance+18*configuration.thickness)
+            let sprite = NotchLightningMotion.hamsterSize(notchWidth: 180, scale: configuration.hamsterScale)
+            let halfLength = 180*1.18/2
+            for point in [center,
+                CGPoint(x: center.x-halfLength-configuration.hamsterGap-sprite/2, y: center.y),
+                CGPoint(x: center.x+halfLength+configuration.hamsterGap+sprite/2, y: center.y)] {
+                try require(view.lightningContainsPointer(at: screenPoint(point)),
+                    "The energy bar and both hamsters respond across preview scales and parameter extremes")
+                hitChecks += 1
+            }
+            for point in [CGPoint(x: center.x, y: shape.notchHeight/2),
+                CGPoint(x: center.x, y: shape.size.height-2),
+                CGPoint(x: shape.size.width+10, y: center.y)] {
+                try require(!view.lightningContainsPointer(at: screenPoint(point)),
+                    "The camera and empty canvas do not hide the generator")
+                hitChecks += 1
+            }
+        }
+    }
+    view.geometry = geometry
+    view.setLightningConfiguration(.standard)
+    panel.setContentSize(geometry.size)
+    let inside = screenPoint(CGPoint(x: geometry.notch.midX, y: geometry.notchHeight+24))
+    let outside = CGPoint(x: -100_000, y: -100_000)
+    let phase = view.animationPhase, suspension = view.lightningElapsed, hamster = view.hamsterElapsed
+    pointer.location = inside
+    pump(0.07)
+    try require(view.lightningVisibility > 0 && view.lightningVisibility < 1,
+        "Hover fades smoothly instead of removing the view immediately")
+    pump(0.75)
+    try require(view.lightningVisibility == 0 && view.isTrackingLightningPointer
+        && panel.isVisible && panel.ignoresMouseEvents && !view.isHiddenOrHasHiddenAncestor,
+        "A completely transparent generator keeps tracking through its click-through panel")
+    pump(0.25)
+    try require(view.lightningVisibility == 0 && view.animationPhase > phase
+        && view.lightningElapsed > suspension && view.hamsterElapsed > hamster,
+        "Staying over the generator does not flicker or reset any animation clock")
+    pointer.location = outside
+    pump(1.1)
+    try require(view.lightningVisibility == 1 && panel.isVisible,
+        "Leaving restores the fully visible generator without a new speed update")
+
+    pointer.reduced = true
+    view.setSpeed(180)
+    pump(0.3)
+    let frozen = [view.animationPhase, view.lightningElapsed, view.hamsterElapsed]
+    pointer.location = inside
+    pump(0.3)
+    try require(view.lightningVisibility == 0 && !view.isRendering && view.isTrackingLightningPointer
+        && [view.animationPhase, view.lightningElapsed, view.hamsterElapsed] == frozen,
+        "Reduced motion still hides on hover without restarting the animation")
+    let frames = view.renderedFrameCount
+    pump(0.3)
+    try require(view.renderedFrameCount == frames,
+        "A stationary pointer causes no repeated redraws in reduced motion")
+    pointer.location = outside
+    pump(0.3)
+    try require(view.lightningVisibility == 1 && !view.isRendering,
+        "Reduced-motion exit restores the generator even after rendering has paused")
+    pointer.location = inside
+    pump(0.3)
+    view.geometry.effect = .matrix
+    view.setSpeed(180)
+    pump(0.3)
+    // A frozen surface also needs a frame when changing the selected shader.
+    view.draw()
+    try require(view.lightningVisibility == 1 && !view.isTrackingLightningPointer,
+        "Switching effects clears the generator's hover fade")
+    view.geometry.effect = .lightning
+    pointer.location = outside
+    view.setSpeed(180)
+    view.draw()
+    pump(0.2)
+    try require(view.lightningVisibility == 1 && view.isTrackingLightningPointer,
+        "Switching back does not inherit a stale hidden state")
+    view.stop()
+    let stoppedFrames = view.renderedFrameCount
+    pump(0.2)
+    try require(!view.isTrackingLightningPointer && view.lightningVisibility == 1
+        && view.lightningElapsed == 0 && view.hamsterElapsed == 0 && view.renderedFrameCount == stoppedFrames,
+        "Stopping clears pointer tracking and animation state without leaving a timer")
+    print("PASS: generator hover fade, click-through, scaled hit regions, reduced motion, exit recovery and cleanup")
+    return ["hitChecks":hitChecks,"smoothFade":true,"clickThrough":true,"exitRestores":true,
+        "hiddenAnimationClocksContinue":true,"reducedMotionResponsive":true,
+        "stationaryReducedSurfaceDoesNotRedraw":true,"effectSwitchClearsFade":true,"stopCleansUp":true]
 }

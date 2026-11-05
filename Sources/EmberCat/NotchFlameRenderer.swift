@@ -84,6 +84,7 @@ final class NotchFlameRenderer {
     private let matrixSeed: UInt64
     private let lightningSeed: UInt64
     private var lightningMaterial: NotchLightningMaterial?
+    var lightningHamsterAnchorY: Double? { lightningMaterial?.hamsterManifest.wheelAnchor[1] }
 
     init(matrixSeed: UInt64 = MatrixCodeFlow.sessionSeed,
          lightningSeed: UInt64 = NotchLightningDischarges.sessionSeed) throws {
@@ -431,6 +432,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private var holeInteraction = MatrixHoleInteraction()
     private(set) var lightningElapsed: Double = 0
     private(set) var hamsterElapsed: Double = 0
+    private(set) var lightningVisibility: Double = 1
     var matrixHoverAmount: Double { holeInteraction.hover }
     var matrixBreathingElapsed: Double { holeInteraction.elapsed }
     var matrixRadiusScale: Double {
@@ -443,6 +445,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private let reduceMotion: @MainActor () -> Bool
     private var reducedPointerTimer: Timer?
     var isTrackingMatrixPointer: Bool { effect == .matrix && (isRendering || reducedPointerTimer != nil) }
+    var isTrackingLightningPointer: Bool { effect == .lightning && (isRendering || reducedPointerTimer != nil) }
     var animationPhase: Double { animation.phase }
     private var lastTime = ProcessInfo.processInfo.systemUptime
     private var accessibilityObserver: NSObjectProtocol?
@@ -620,13 +623,41 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         return diskX*diskX+diskY*diskY <= 1
     }
 
+    func lightningContainsPointer(at screenPoint: CGPoint) -> Bool {
+        guard effect == .lightning, let window, window.isVisible, !isHiddenOrHasHiddenAncestor,
+              bounds.width > 0, bounds.height > 0, screenPoint.x.isFinite, screenPoint.y.isFinite,
+              let anchor = renderer.lightningHamsterAnchorY else { return false }
+        let local = convert(window.convertPoint(fromScreen: screenPoint), from: nil)
+        guard bounds.contains(local) else { return false }
+        let point = CGPoint(x: (local.x-bounds.minX)*geometry.size.width/bounds.width,
+            y: (isFlipped ? local.y-bounds.minY : bounds.maxY-local.y)*geometry.size.height/bounds.height)
+        guard !geometry.notch.contains(point) else { return false }
+        let configuration = lightningConfiguration
+        let length = geometry.notchWidth*(0.88+0.30*animation.heat)
+        let diameter = NotchLightningMotion.diameter(heat: animation.heat, thickness: configuration.thickness)
+        let sprite = NotchLightningMotion.hamsterSize(notchWidth: geometry.notchWidth, scale: configuration.hamsterScale)
+        let center = CGPoint(x: geometry.notch.midX,
+            y: geometry.notchHeight+configuration.distance+diameter/2)
+        // Keep a stable envelope while the body floats or becomes transparent.
+        // Hit testing must not follow individual sparks, frames or fade opacity.
+        let margin = 4+configuration.levitation*1.8+configuration.jitter*1.5
+        let body = CGRect(x: center.x-length/2-margin, y: geometry.notchHeight,
+            width: length+margin*2, height: configuration.distance+diameter+margin)
+        let top = max(3, center.y-anchor*sprite)
+        let left = CGRect(x: center.x-length/2-configuration.hamsterGap-sprite,
+            y: top, width: sprite, height: sprite).insetBy(dx: -margin, dy: -margin)
+        let right = CGRect(x: center.x+length/2+configuration.hamsterGap,
+            y: top, width: sprite, height: sprite).insetBy(dx: -margin, dy: -margin)
+        return body.contains(point) || left.contains(point) || right.contains(point)
+    }
+
     private func stopReducedPointerTracking() {
         reducedPointerTimer?.invalidate()
         reducedPointerTimer = nil
     }
 
     private func updateReducedPointerTracking() {
-        guard effect == .matrix,window?.isVisible == true,!animation.isHidden,
+        guard (effect == .matrix || effect == .lightning),window?.isVisible == true,!animation.isHidden,
               reduceMotion() else {
             stopReducedPointerTracking()
             return
@@ -637,8 +668,15 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         let timer = Timer(timeInterval:1.0/12,repeats:true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             MainActor.assumeIsolated {
-                let target = self.matrixContainsPointer(at:self.mouseLocation()) ? 1.0 : 0.0
-                if target != self.holeInteraction.hover { self.draw() }
+                switch self.effect {
+                case .matrix:
+                    let target = self.matrixContainsPointer(at:self.mouseLocation()) ? 1.0 : 0.0
+                    if target != self.holeInteraction.hover { self.draw() }
+                case .lightning:
+                    let target = self.lightningContainsPointer(at:self.mouseLocation()) ? 0.0 : 1.0
+                    if target != self.lightningVisibility { self.draw() }
+                case .flame: self.stopReducedPointerTracking()
+                }
             }
         }
         reducedPointerTimer = timer
@@ -649,6 +687,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         pauseFrames()
         stopReducedPointerTracking()
         holeInteraction.reset()
+        lightningVisibility = 1
         lightningElapsed = 0
         hamsterElapsed = 0
         animation.reset()
@@ -676,12 +715,21 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
                 reduceMotion:reduced)
         } else { holeInteraction.reset() }
         if effect == .lightning {
+            let target = lightningContainsPointer(at: mouseLocation()) ? 0.0 : 1.0
+            if reduced { lightningVisibility = target }
+            else if delta.isFinite {
+                let step = min(0.1, max(0, delta))
+                lightningVisibility += (target-lightningVisibility)
+                    * (1-exp(-step/(target == 0 ? 0.07 : 0.14)))
+                if abs(target-lightningVisibility) < 0.001 { lightningVisibility = target }
+            }
             if !reduced, delta.isFinite {
                 let step = min(0.1, max(0, delta))
                 lightningElapsed += step
                 hamsterElapsed += step*lightningConfiguration.hamsterSpeed
             }
         } else {
+            lightningVisibility = 1
             lightningElapsed = 0
             hamsterElapsed = 0
         }
@@ -697,7 +745,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         do {
             try renderer.draw(texture: drawable.texture, geometry: geometry,
                 time: animation.phase, heat: Float(animation.heat),
-                visibility: Float(animation.visibility), drawsAnchor: drawsAnchor,
+                visibility: Float(animation.visibility*lightningVisibility), drawsAnchor: drawsAnchor,
                 color: animation.color, appearance: flameAppearance, matrixConfiguration: matrixConfiguration,
                 matrixColorScheme: matrixColorScheme,
                 matrixHover:holeInteraction.hover,matrixBreathingTime:holeInteraction.elapsed,

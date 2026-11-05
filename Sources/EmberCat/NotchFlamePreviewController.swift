@@ -48,7 +48,6 @@ enum FlamePreviewBackground: CaseIterable {
 private final class FlamePreviewScene: NSView {
     let flame: NotchFlameMetalView
     let background: FlamePreviewBackground
-    private var sceneHeight: NSLayoutConstraint?
     override var isFlipped: Bool { true }
 
     init(geometry: NotchFlameGeometry, renderer: NotchFlameRenderer, background: FlamePreviewBackground) throws {
@@ -62,16 +61,13 @@ private final class FlamePreviewScene: NSView {
         addSubview(flame)
         translatesAutoresizingMaskIntoConstraints = false
         widthAnchor.constraint(equalToConstant: 280).isActive = true
-        sceneHeight = heightAnchor.constraint(equalToConstant: geometry.effect == .lightning
-            ? max(168, geometry.size.height + 12) : 168)
-        sceneHeight?.isActive = true
+        heightAnchor.constraint(equalToConstant: 168).isActive = true
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func update(geometry: NotchFlameGeometry) {
         flame.geometry = geometry
-        sceneHeight?.constant = geometry.effect == .lightning ? max(168, geometry.size.height + 12) : 168
         needsLayout = true
         needsDisplay = true
     }
@@ -250,7 +246,8 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         contentStack = stack
         content.addSubview(stack)
-        NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
+        NSLayoutConstraint.activate([stack.widthAnchor.constraint(equalToConstant: 880),
+            stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             stack.topAnchor.constraint(equalTo: content.topAnchor,constant: 20)])
         previewConfiguration(palette: settings.palette, appearance: settings.appearance)
         previewMatrixConfiguration(matrixDraft)
@@ -296,7 +293,7 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         lightningDraft = configuration
         for scene in scenes { scene.flame.setLightningConfiguration(configuration) }
         refreshGeometry()
-        updateEffectControls()
+        updateApplyButton()
         window?.contentView?.layoutSubtreeIfNeeded()
     }
 
@@ -371,9 +368,9 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
             subtitleLabel.stringValue = "黑洞大小随 tok/s 平滑变化，本体轻微呼吸；鼠标经过虚化，洞心保持深黑。"
             height = 754
         case .lightning:
-            titleLabel.stringValue = "仓鼠动力 · 能量条"
-            subtitleLabel.stringValue = "两侧仓鼠随速度换挡，能量条悬浮、随机放电；白、蓝、紫渐变，极速时微微泛红。"
-            height = 704 + max(0, geometry.size.height + 12 - 168)
+            titleLabel.stringValue = selectedEffect.title
+            subtitleLabel.stringValue = "仓鼠随速度换挡，能量条随机放电；鼠标经过时隐藏，移开恢复。"
+            height = 704
         }
         paletteEditor?.isHidden = selectedEffect != .flame
         matrixControls?.isHidden = selectedEffect != .matrix
@@ -447,7 +444,7 @@ func exportLightningPreview(to folder: URL, configuration: NotchLightningConfigu
     let column = max(280, Int(geometry.size.width)+44)
     let row = Int(geometry.size.height)+40
     let sheet = try flameReviewImage(width: column*3, height: row*2+64, scale: 2) { context in
-        flameText("仓鼠动力 · 卡通能量条", at: CGPoint(x: 24, y: 16), size: 20, color: .white)
+        flameText("仓鼠发电机", at: CGPoint(x: 24, y: 16), size: 20, color: .white)
         for (index, rate) in rates.enumerated() {
             for (backgroundIndex, background) in [FlamePreviewBackground.dark, .white].enumerated() {
                 let rendered = try renderer.image(geometry: geometry, time: 12.4, speed: rate, scale: 3,
@@ -486,7 +483,7 @@ func exportLightningPreview(to folder: URL, configuration: NotchLightningConfigu
                 animations[index].advance(by: 1/fps, flow: configuration.flow)
             }
             let image = try flameReviewImage(width: column*count, height: row+52, scale: 1) { context in
-                flameText(transition ? "仓鼠动力 · 连续换挡" : "仓鼠动力 · 三档动效", at: CGPoint(x: 16, y: 14),
+                flameText(transition ? "仓鼠发电机 · 连续换挡" : "仓鼠发电机 · 三档动效", at: CGPoint(x: 16, y: 14),
                     size: 16, color: .white)
                 for index in 0..<count {
                     let animation = animations[index]

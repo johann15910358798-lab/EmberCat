@@ -7,7 +7,7 @@ enum NotchEffectStyle: String, CaseIterable {
         switch self {
         case .flame: "流焰"
         case .matrix: "Matrix 代码雨"
-        case .lightning: "柱状闪电"
+        case .lightning: "仓鼠发电机"
         }
     }
 }
