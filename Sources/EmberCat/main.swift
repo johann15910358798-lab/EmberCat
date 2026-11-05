@@ -46,6 +46,20 @@ if let index = CommandLine.arguments.firstIndex(of: "--export-cat-preview") {
     }
 }
 
+if let index = CommandLine.arguments.firstIndex(of: "--export-lightning-preview") {
+    guard CommandLine.arguments.count > index + 1 else {
+        fputs("Usage: EmberCat --export-lightning-preview OUTPUT_DIRECTORY\n", stderr)
+        exit(1)
+    }
+    do {
+        try exportLightningPreview(to: URL(fileURLWithPath: CommandLine.arguments[index + 1], isDirectory: true))
+        exit(0)
+    } catch {
+        fputs("Lightning export failed: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
+}
+
 if let index = CommandLine.arguments.firstIndex(of: "--export-matrix-preview") {
     guard CommandLine.arguments.count > index + 1 else {
         fputs("Usage: EmberCat --export-matrix-preview OUTPUT_DIRECTORY\n", stderr)
@@ -77,6 +91,7 @@ if let index = CommandLine.arguments.firstIndex(of: "--export-flame-preview") {
 let app = NSApplication.shared
 if CommandLine.arguments.contains("--preview-flame")
     || CommandLine.arguments.contains("--preview-matrix")
+    || CommandLine.arguments.contains("--preview-lightning")
     || Bundle.main.object(forInfoDictionaryKey: "EmberCatFlamePreview") as? Bool == true {
     let delegate = FlamePreviewAppDelegate()
     app.delegate = delegate

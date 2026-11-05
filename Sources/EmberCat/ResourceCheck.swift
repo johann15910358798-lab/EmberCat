@@ -12,6 +12,29 @@ func checkMenuBarResources() -> Bool {
     var menuBarFramesChecked = 0
     var menuBarWidths: [String: CGFloat] = [:]
     var failures: [String] = []
+    var lightningAtlasesChecked = 0
+    var lightningHamsterFramesChecked = 0
+    if let folder = AppResources.directory("NotchLightning") {
+        for name in ["tube-atlas.png", "leak-atlas.png"] {
+            guard let image = NSImage(contentsOf: folder.appendingPathComponent(name)), image.isValid,
+                  let rep = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
+                  rep.pixelsWide == 1024, rep.pixelsHigh == 1536, rep.hasAlpha else {
+                failures.append("NotchLightning/\(name): missing or invalid transparent atlas")
+                continue
+            }
+            lightningAtlasesChecked += 1
+        }
+        do {
+            let manifest = try NotchLightningHamsterManifest.load(from: folder)
+            if let image = NSImage(contentsOf: folder.appendingPathComponent("hamster-atlas.png")), image.isValid,
+               let rep = image.representations.compactMap({ $0 as? NSBitmapImageRep }).first,
+               rep.hasAlpha, rep.pixelsWide == manifest.cellSize*manifest.columns,
+               rep.pixelsHigh == manifest.cellSize*manifest.rows {
+                lightningHamsterFramesChecked = manifest.frameCount
+                lightningAtlasesChecked += 1
+            } else { failures.append("NotchLightning/hamster-atlas.png: missing or invalid animation atlas") }
+        } catch { failures.append("NotchLightning: invalid hamster animation manifest") }
+    } else { failures.append("NotchLightning: resource directory missing from application") }
     let portrait = AppResources.dockIdleCat
     let portraitRep = portrait?.representations.compactMap { $0 as? NSBitmapImageRep }.first
     let dockIdleArtworkChecked = portrait?.isValid == true && portrait?.isTemplate == false
@@ -318,6 +341,8 @@ func checkMenuBarResources() -> Bool {
         "sourceIconsChecked": sourceIconsChecked,
         "dockIdleArtworkChecked": dockIdleArtworkChecked,
         "dockIdleEyeLayersChecked": dockIdleEyeLayersChecked,
+        "lightningAtlasesChecked": lightningAtlasesChecked,
+        "lightningHamsterFramesChecked": lightningHamsterFramesChecked,
         "sourceIconFallbacksChecked": sourceIconFallbacksChecked,
         "unreadableSourceIconFallbackChecked": unreadableSourceIconFallbackChecked,
         "template": true, "logicalSize": [36,20], "scales": [1,2], "failures": failures]

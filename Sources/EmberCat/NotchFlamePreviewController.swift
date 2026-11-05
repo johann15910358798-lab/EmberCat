@@ -48,6 +48,7 @@ enum FlamePreviewBackground: CaseIterable {
 private final class FlamePreviewScene: NSView {
     let flame: NotchFlameMetalView
     let background: FlamePreviewBackground
+    private var sceneHeight: NSLayoutConstraint?
     override var isFlipped: Bool { true }
 
     init(geometry: NotchFlameGeometry, renderer: NotchFlameRenderer, background: FlamePreviewBackground) throws {
@@ -61,13 +62,16 @@ private final class FlamePreviewScene: NSView {
         addSubview(flame)
         translatesAutoresizingMaskIntoConstraints = false
         widthAnchor.constraint(equalToConstant: 280).isActive = true
-        heightAnchor.constraint(equalToConstant: 168).isActive = true
+        sceneHeight = heightAnchor.constraint(equalToConstant: geometry.effect == .lightning
+            ? max(168, geometry.size.height + 12) : 168)
+        sceneHeight?.isActive = true
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     func update(geometry: NotchFlameGeometry) {
         flame.geometry = geometry
+        sceneHeight?.constant = geometry.effect == .lightning ? max(168, geometry.size.height + 12) : 168
         needsLayout = true
         needsDisplay = true
     }
@@ -107,6 +111,9 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
     private var paletteEditor: NotchFlamePaletteEditor?
     private var matrixControls: NotchMatrixControls?
     private var matrixDraft: NotchMatrixConfiguration
+    private var lightningControls: NotchLightningControls?
+    private var contentStack: NSStackView?
+    private var lightningDraft: NotchLightningConfiguration
     private var previewPalette: NotchFlamePalette?
     private(set) var selectedEffect: NotchEffectStyle
     private let titleLabel = NSTextField(labelWithString: "")
@@ -120,15 +127,16 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         self.settings = settings
         self.isIsolatedDraft = isIsolatedDraft
         matrixDraft = settings.matrixConfiguration
+        lightningDraft = settings.lightningConfiguration
         selectedEffect = effect ?? settings.effect
         let window = NSWindow(contentRect: CGRect(x: 0, y: 0, width: 920, height: 730),
             styleMask: [.titled,.closable,.miniaturizable], backing: .buffered, defer: false)
-        window.title = isIsolatedDraft ? "EmberCat · Matrix 交互草稿" : "EmberCat · 特效设置与预览"
+        window.title = isIsolatedDraft ? "EmberCat · \(selectedEffect.title)交互草稿" : "EmberCat · 特效设置与预览"
         window.isReleasedWhenClosed = false
         super.init(window: window)
         window.delegate = self
         window.center()
-        if isIsolatedDraft { speed.doubleValue = 90 }
+        if isIsolatedDraft && selectedEffect != .lightning { speed.doubleValue = 90 }
         try buildContent(renderer: renderer ?? NotchFlameRenderer())
     }
 
@@ -156,6 +164,8 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
             paletteEditor?.reload()
             matrixControls?.reload(settings.matrixConfiguration)
             previewMatrixConfiguration(settings.matrixConfiguration)
+            lightningControls?.reload(settings.lightningConfiguration)
+            previewLightningConfiguration(settings.lightningConfiguration)
         }
         updateEffectControls()
         changeSpeed()
@@ -175,8 +185,9 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
     func deactivateColorWells() { paletteEditor?.deactivateColors() }
 
     private var geometry: NotchFlameGeometry {
-        NotchDisplayProfile.current()?.geometry(for: selectedEffect)
-            ?? NotchFlameGeometry(notchWidth: 180, notchHeight: 32, effect: selectedEffect)
+        NotchDisplayProfile.current()?.geometry(for: selectedEffect, lightningConfiguration: lightningDraft)
+            ?? NotchFlameGeometry(notchWidth: 180, notchHeight: 32, effect: selectedEffect,
+                lightningConfiguration: lightningDraft)
     }
 
     private func buildContent(renderer: NotchFlameRenderer) throws {
@@ -221,6 +232,9 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         let matrix = NotchMatrixControls(configuration: matrixDraft)
         matrixControls = matrix
         matrix.onChange = { [weak self] in self?.previewMatrixConfiguration($0) }
+        let lightning = NotchLightningControls(configuration: lightningDraft)
+        lightningControls = lightning
+        lightning.onChange = { [weak self] in self?.previewLightningConfiguration($0) }
         let hint = NSTextField(labelWithString: isIsolatedDraft
             ? "模拟 tok/s · 参数仅保存在这份草稿中，不更改已安装应用。"
             : "此窗口使用模拟 tok/s；顶部特效和菜单栏继续读取真实输出。")
@@ -228,17 +242,19 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         hint.textColor = .secondaryLabelColor
         hint.setAccessibilityIdentifier("notch-preview-scope")
         let stack = NSStackView(views: [titleLabel,subtitleLabel,effectControl,deviceLabel,samples,
-            speedRow,presets,editor,matrix,applyEffectButton,hint])
+            speedRow,presets,editor,matrix,lightning,applyEffectButton,hint])
         stack.orientation = .vertical
         stack.alignment = .centerX
         stack.spacing = 12
         stack.detachesHiddenViews = true
         stack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack = stack
         content.addSubview(stack)
         NSLayoutConstraint.activate([stack.centerXAnchor.constraint(equalTo: content.centerXAnchor),
             stack.topAnchor.constraint(equalTo: content.topAnchor,constant: 20)])
         previewConfiguration(palette: settings.palette, appearance: settings.appearance)
         previewMatrixConfiguration(matrixDraft)
+        previewLightningConfiguration(lightningDraft)
         updateEffectControls()
         refreshGeometry()
     }
@@ -276,16 +292,37 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         previewMatrixConfiguration(configuration)
     }
 
+    private func previewLightningConfiguration(_ configuration: NotchLightningConfiguration) {
+        lightningDraft = configuration
+        for scene in scenes { scene.flame.setLightningConfiguration(configuration) }
+        refreshGeometry()
+        updateEffectControls()
+        window?.contentView?.layoutSubtreeIfNeeded()
+    }
+
+    func setLightningDraftConfiguration(_ configuration: NotchLightningConfiguration) {
+        guard configuration.validationError == nil else { return }
+        lightningControls?.reload(configuration)
+        previewLightningConfiguration(configuration)
+    }
+
     private func rebuildPresets() {
         let palette = previewPalette ?? settings.palette
-        speed.maxValue = selectedEffect == .matrix ? 180 : palette.previewMaximum
+        speed.maxValue = selectedEffect == .flame ? palette.previewMaximum : 180
         speed.doubleValue = min(speed.doubleValue, speed.maxValue)
-        rates = selectedEffect == .matrix ? [0, 20, 90, 180] : palette.sampleRates
+        rates = selectedEffect == .flame ? palette.sampleRates : [0, 20, 90, 180]
         for view in presets.arrangedSubviews { presets.removeArrangedSubview(view); view.removeFromSuperview() }
         for (index, rate) in rates.enumerated() {
-            let title = index == 0 ? "0 · 熄灭" : selectedEffect == .matrix
-                ? "\(["", "慢流", "穿梭", "高速"][index]) · \(Int(rate))"
-                : "第 \(index) 档 · \(Int(rate.rounded()))"
+            let title: String
+            if index == 0 {
+                title = "0 · 熄灭"
+            } else {
+                switch selectedEffect {
+                case .flame: title = "第 \(index) 档 · \(Int(rate.rounded()))"
+                case .matrix: title = "\(["", "慢流", "穿梭", "高速"][index]) · \(Int(rate))"
+                case .lightning: title = "\(["", "慢速仓鼠", "高速仓鼠", "极速仓鼠"][index]) · \(Int(rate))"
+                }
+            }
             let button = NSButton(title: title, target: self, action: #selector(selectRate(_:)))
             button.tag = index
             button.controlSize = .small
@@ -299,8 +336,8 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
     func selectEffect(_ effect: NotchEffectStyle) {
         selectedEffect = effect
         paletteEditor?.deactivateColors()
-        updateEffectControls()
         refreshGeometry()
+        updateEffectControls()
         rebuildPresets()
     }
 
@@ -313,31 +350,55 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         if selectedEffect == .matrix {
             guard settings.setMatrixConfiguration(matrixDraft) else { return }
         }
+        if selectedEffect == .lightning {
+            guard settings.setLightningConfiguration(lightningDraft) else { return }
+        }
         settings.effect = selectedEffect
         settings.isEnabled = true
         updateEffectControls()
     }
 
     private func updateEffectControls() {
-        let matrix = selectedEffect == .matrix
-        effectControl.selectedSegment = matrix ? 1 : 0
-        titleLabel.stringValue = matrix ? "Matrix · 代码雨" : "刘海流焰"
-        subtitleLabel.stringValue = matrix
-            ? "黑洞大小随 tok/s 平滑变化，本体轻微呼吸；鼠标经过虚化，洞心保持深黑。"
-            : "滑动调整火焰质感，为不同速度设定自己的颜色。"
-        paletteEditor?.isHidden = matrix
-        matrixControls?.isHidden = !matrix
+        effectControl.selectedSegment = NotchEffectStyle.allCases.firstIndex(of: selectedEffect) ?? 0
+        var height: CGFloat
+        switch selectedEffect {
+        case .flame:
+            titleLabel.stringValue = "刘海流焰"
+            subtitleLabel.stringValue = "滑动调整火焰质感，为不同速度设定自己的颜色。"
+            height = 716
+        case .matrix:
+            titleLabel.stringValue = "Matrix · 代码雨"
+            subtitleLabel.stringValue = "黑洞大小随 tok/s 平滑变化，本体轻微呼吸；鼠标经过虚化，洞心保持深黑。"
+            height = 754
+        case .lightning:
+            titleLabel.stringValue = "仓鼠动力 · 能量条"
+            subtitleLabel.stringValue = "两侧仓鼠随速度换挡，能量条悬浮、随机放电；白、蓝、紫渐变，极速时微微泛红。"
+            height = 704 + max(0, geometry.size.height + 12 - 168)
+        }
+        paletteEditor?.isHidden = selectedEffect != .flame
+        matrixControls?.isHidden = selectedEffect != .matrix
+        lightningControls?.isHidden = selectedEffect != .lightning
         updateApplyButton()
         if let window {
+            if selectedEffect == .lightning {
+                window.contentView?.layoutSubtreeIfNeeded()
+                height = max(height,(contentStack?.fittingSize.height ?? 0)+40)
+            }
             let top = window.frame.maxY
-            window.setContentSize(NSSize(width: 920, height: matrix ? 754 : 716))
-            window.setFrameOrigin(CGPoint(x: window.frame.minX, y: top-window.frame.height))
+            window.setContentSize(NSSize(width: 920, height: height))
+            var origin = CGPoint(x: window.frame.minX, y: top-window.frame.height)
+            if let visible = (window.screen ?? NSScreen.main)?.visibleFrame {
+                origin.x = min(max(visible.minX,origin.x),max(visible.minX,visible.maxX-window.frame.width))
+                origin.y = min(max(visible.minY,origin.y),max(visible.minY,visible.maxY-window.frame.height))
+            }
+            window.setFrameOrigin(origin)
         }
     }
 
     private func updateApplyButton() {
         let applied = settings.effect == selectedEffect && settings.isEnabled
             && (selectedEffect != .matrix || matrixDraft == settings.matrixConfiguration)
+            && (selectedEffect != .lightning || lightningDraft == settings.lightningConfiguration)
         if isIsolatedDraft {
             applyEffectButton.title = applied ? "草稿参数已保存" : "保存草稿参数"
         } else {
@@ -361,8 +422,9 @@ final class FlamePreviewAppDelegate: NSObject, NSApplicationDelegate {
     private var preview: NotchFlamePreviewController?
     func applicationDidFinishLaunching(_ notification: Notification) {
         do {
-            preview = try NotchFlamePreviewController(effect:
-                CommandLine.arguments.contains("--preview-matrix") ? .matrix : .flame)
+            let effect: NotchEffectStyle = CommandLine.arguments.contains("--preview-lightning") ? .lightning
+                : CommandLine.arguments.contains("--preview-matrix") ? .matrix : .flame
+            preview = try NotchFlamePreviewController(effect: effect)
             preview?.showWindow(nil)
         } catch {
             NSAlert(error: error).runModal()
@@ -370,6 +432,82 @@ final class FlamePreviewAppDelegate: NSObject, NSApplicationDelegate {
         }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+}
+
+/// Fixed-rate and changing-rate samples use the live renderer and animation clock.
+@MainActor
+func exportLightningPreview(to folder: URL, configuration: NotchLightningConfiguration = .standard) throws {
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    let renderer = try NotchFlameRenderer(lightningSeed: NotchLightningDischarges.previewSeed)
+    let geometry = NotchDisplayProfile.current()?.geometry(for: .lightning, lightningConfiguration: configuration)
+        ?? NotchFlameGeometry(notchWidth: 180, notchHeight: 32, effect: .lightning,
+            lightningConfiguration: configuration)
+    let rates = [20.0, 90, 180]
+    let labels = ["慢速仓鼠", "高速仓鼠", "极速仓鼠"]
+    let column = max(280, Int(geometry.size.width)+44)
+    let row = Int(geometry.size.height)+40
+    let sheet = try flameReviewImage(width: column*3, height: row*2+64, scale: 2) { context in
+        flameText("仓鼠动力 · 卡通能量条", at: CGPoint(x: 24, y: 16), size: 20, color: .white)
+        for (index, rate) in rates.enumerated() {
+            for (backgroundIndex, background) in [FlamePreviewBackground.dark, .white].enumerated() {
+                let rendered = try renderer.image(geometry: geometry, time: 12.4, speed: rate, scale: 3,
+                    matrixColorScheme: background.matrixColorScheme!)
+                drawFlameSample(context: context, image: rendered, geometry: geometry,
+                    rect: CGRect(x: index*column+12, y: 64+backgroundIndex*row, width: column-24, height: row-12),
+                    background: background, caption: "\(labels[index]) · 模拟 \(Int(rate)) tok/s")
+            }
+        }
+    }
+    try NSBitmapImageRep(cgImage: sheet).representation(using: .png, properties: [:])!
+        .write(to: folder.appendingPathComponent("lightning-stages.png"))
+
+    let fps = 25.0
+    for transition in [false, true] {
+        let frames = transition ? 250 : 150
+        let name = transition ? "lightning-transition.gif" : "lightning-motion.gif"
+        guard let destination = CGImageDestinationCreateWithURL(folder.appendingPathComponent(name) as CFURL,
+            UTType.gif.identifier as CFString, frames, nil) else {
+            throw NSError(domain: "EmberCat.LightningPreview", code: 1)
+        }
+        CGImageDestinationSetProperties(destination,
+            [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        var animations = rates.map { rate -> NotchFlameAnimation in
+            var animation = NotchFlameAnimation()
+            animation.setSpeed(transition ? 0 : rate)
+            for _ in 0..<300 { animation.advance(by: 1/60, flow: configuration.flow) }
+            return animation
+        }
+        for frame in 0..<frames {
+            let seconds = Double(frame)/fps
+            let input = seconds < 2.5 ? 20.0 : seconds < 5 ? 90 : seconds < 7.5 ? 180 : 0
+            let count = transition ? 1 : rates.count
+            for index in 0..<count {
+                animations[index].setSpeed(transition ? input : rates[index])
+                animations[index].advance(by: 1/fps, flow: configuration.flow)
+            }
+            let image = try flameReviewImage(width: column*count, height: row+52, scale: 1) { context in
+                flameText(transition ? "仓鼠动力 · 连续换挡" : "仓鼠动力 · 三档动效", at: CGPoint(x: 16, y: 14),
+                    size: 16, color: .white)
+                for index in 0..<count {
+                    let animation = animations[index]
+                    let displaySpeed = pow(animation.heat, 1/0.8)*180
+                    let rendered = try renderer.image(geometry: geometry, time: animation.phase,
+                        speed: displaySpeed, scale: 2, lightningMotionTime: seconds,
+                        visibility: Float(animation.visibility))
+                    drawFlameSample(context: context, image: rendered, geometry: geometry,
+                        rect: CGRect(x: index*column+8, y: 48, width: column-16, height: row-8), background: .dark,
+                        caption: transition ? "模拟输入 \(Int(input)) tok/s · 平滑过渡"
+                            : "\(labels[index]) · 模拟 \(Int(rates[index])) tok/s")
+                }
+            }
+            CGImageDestinationAddImage(destination, image,
+                [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: 1/fps]] as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(destination) else {
+            throw NSError(domain: "EmberCat.LightningPreview", code: 2)
+        }
+    }
+    print("Exported native lightning preview to \(folder.path)")
 }
 
 /// Review artifacts contain actual shader output, with explicitly simulated token rates.

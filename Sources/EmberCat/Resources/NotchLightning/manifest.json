@@ -1,0 +1,153 @@
+{
+  "source": "Artwork/NotchLightning/direction-reference-v3.png",
+  "sourceSHA256": "01a07d678b6af5a7726fe419c82afb703c41374ba234b7755bd92c8a0b34d71c",
+  "generator": "gpt-image-2.5-sunburst",
+  "sourceType": "user-selected generated concept",
+  "cellSize": [
+    512,
+    256
+  ],
+  "tubeBounds": [
+    32,
+    64,
+    448,
+    64
+  ],
+  "rows": [
+    "dark-white",
+    "dark-blue",
+    "dark-violet",
+    "light-white",
+    "light-blue",
+    "light-violet"
+  ],
+  "tubeColumns": [
+    "fixed shell and caps",
+    "seamless internal flow"
+  ],
+  "leakColumns": [
+    "left fracture",
+    "right fracture"
+  ],
+  "stages": [
+    {
+      "name": "white",
+      "center": [
+        281,
+        230.5
+      ],
+      "size": [
+        344,
+        37
+      ],
+      "light_offset": 441,
+      "roots": [
+        [
+          195,
+          247
+        ]
+      ],
+      "directions": [
+        [
+          -0.12,
+          1
+        ]
+      ],
+      "rootsUV": [
+        [
+          0.28125,
+          0.4864864864864865
+        ]
+      ]
+    },
+    {
+      "name": "blue",
+      "center": [
+        778,
+        237.5
+      ],
+      "size": [
+        386,
+        49
+      ],
+      "light_offset": 441,
+      "roots": [
+        [
+          686,
+          258
+        ],
+        [
+          907,
+          215
+        ]
+      ],
+      "directions": [
+        [
+          -0.3,
+          1
+        ],
+        [
+          0.1,
+          -1
+        ]
+      ],
+      "rootsUV": [
+        [
+          0.2914507772020726,
+          0.47959183673469385
+        ],
+        [
+          0.792422279792746,
+          0.2602040816326531
+        ]
+      ]
+    },
+    {
+      "name": "violet",
+      "center": [
+        1273,
+        249.5
+      ],
+      "size": [
+        432,
+        69
+      ],
+      "light_offset": 442,
+      "roots": [
+        [
+          1159,
+          278
+        ],
+        [
+          1378,
+          218
+        ]
+      ],
+      "directions": [
+        [
+          -0.28,
+          1
+        ],
+        [
+          0.65,
+          -0.75
+        ]
+      ],
+      "rootsUV": [
+        [
+          0.2690972222222222,
+          0.4782608695652174
+        ],
+        [
+          0.7126736111111112,
+          0.2608695652173913
+        ]
+      ]
+    }
+  ],
+  "contactCleanup": "shell seam highlights repaired from adjacent wall; runtime strikes supply moving contacts",
+  "assets": {
+    "tube-atlas.png": "6a1c0ee02110972d38a7fe701708a4af78c5e97444d53dd2d7aafbf138741d9b",
+    "leak-atlas.png": "06f3e6d6d22fc779d6dadc135f38c9e0bfd465919580fbd5955de15bd1d776b9"
+  }
+}

@@ -68,11 +68,15 @@ final class NotchFlameController {
     private func refreshVisibility() {
         guard settings.isEnabled, !sleeping, !failed else { hide(); return }
         if lastSpeed > 0 {
-            if panel == nil || panel?.isVisible != true || flameView?.effect != settings.effect { refreshDisplay() }
+            if panel == nil || panel?.isVisible != true || flameView?.effect != settings.effect
+                || (settings.effect == .lightning && flameView?.lightningConfiguration != settings.lightningConfiguration) {
+                refreshDisplay()
+            }
             guard let panel, let flameView else { return }
             flameView.setPalette(settings.palette)
             flameView.setAppearance(settings.appearance)
             flameView.setMatrixConfiguration(settings.matrixConfiguration)
+            flameView.setLightningConfiguration(settings.lightningConfiguration)
             flameView.setSpeed(lastSpeed)
             if !panel.isVisible { panel.orderFrontRegardless() }
         } else {
@@ -86,8 +90,10 @@ final class NotchFlameController {
         if panel == nil {
             guard lastSpeed > 0 else { return }
             do {
-                let view = try NotchFlameMetalView(geometry: profile.geometry(for: settings.effect))
-                let panel = FlamePanel(contentRect: profile.panelFrame(for: settings.effect),
+                let view = try NotchFlameMetalView(geometry: profile.geometry(for: settings.effect,
+                    lightningConfiguration: settings.lightningConfiguration))
+                let panel = FlamePanel(contentRect: profile.panelFrame(for: settings.effect,
+                    lightningConfiguration: settings.lightningConfiguration),
                     styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
                 panel.title = "EmberCat · 灵动岛火焰"
                 panel.isOpaque = false
@@ -111,13 +117,16 @@ final class NotchFlameController {
                 return
             }
         }
-        flameView?.geometry = profile.geometry(for: settings.effect)
-        panel?.title = settings.effect == .matrix ? "EmberCat · Matrix 代码雨" : "EmberCat · 灵动岛火焰"
+        flameView?.geometry = profile.geometry(for: settings.effect,
+            lightningConfiguration: settings.lightningConfiguration)
+        panel?.title = settings.effect == .flame ? "EmberCat · 灵动岛火焰" : "EmberCat · \(settings.effect.title)"
         flameView?.setPalette(settings.palette)
         flameView?.setAppearance(settings.appearance)
         flameView?.setMatrixConfiguration(settings.matrixConfiguration)
+        flameView?.setLightningConfiguration(settings.lightningConfiguration)
         flameView?.drawsAnchor = profile.notchFrame == nil
-        panel?.setFrame(profile.panelFrame(for: settings.effect), display: true)
+        panel?.setFrame(profile.panelFrame(for: settings.effect,
+            lightningConfiguration: settings.lightningConfiguration), display: true)
         flameView?.refreshDisplay(maximumFramesPerSecond: profile.maximumFramesPerSecond)
         if lastSpeed > 0 {
             flameView?.setSpeed(lastSpeed)

@@ -37,6 +37,7 @@ let package = Package(
             ],
             resources: [.copy("Resources/MenuBarPets"), .copy("Resources/SourceIcons"),
                         .copy("Resources/DockIdleCat"),
+                        .copy("Resources/NotchLightning"),
                         .copy("Resources/PetPreview")],
             linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]
         ),

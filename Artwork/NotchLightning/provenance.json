@@ -1,0 +1,10 @@
+{
+  "source": "direction-reference-v3.png",
+  "source_sha256": "01a07d678b6af5a7726fe419c82afb703c41374ba234b7755bd92c8a0b34d71c",
+  "generator": "gpt-image-2.5-sunburst",
+  "provider": "https://api.aimindsky.com/v1",
+  "kind": "selected visual direction from generated project concept",
+  "processing": "scripts/prepare-lightning.py",
+  "runtime": "bundled premultiplied material atlas; GPU interior flow, isolated leaks and notch suspension arcs",
+  "runtime_requires_image_api": false
+}

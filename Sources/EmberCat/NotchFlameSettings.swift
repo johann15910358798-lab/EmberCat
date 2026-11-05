@@ -1,12 +1,145 @@
 import AppKit
 
 enum NotchEffectStyle: String, CaseIterable {
-    case flame, matrix
+    case flame, matrix, lightning
 
     var title: String {
         switch self {
         case .flame: "流焰"
         case .matrix: "Matrix 代码雨"
+        case .lightning: "柱状闪电"
+        }
+    }
+}
+
+struct NotchLightningConfiguration: Codable, Equatable {
+    static let standard = NotchLightningConfiguration()
+    var thickness: Double = 1
+    var distance: Double = 6
+    var levitation: Double = 1.6
+    var jitter: Double = 1
+    var flow: Double = 1
+    var arcs: Double = 1
+    var hamsterScale: Double = 1
+    var hamsterGap: Double = 5
+    var hamsterSpeed: Double = 1
+    var motionEnabled: Bool = true
+
+    init(thickness: Double = 1, distance: Double = 6, levitation: Double = 1.6,
+         jitter: Double = 1, flow: Double = 1, arcs: Double = 1,
+         hamsterScale: Double = 1, hamsterGap: Double = 5, hamsterSpeed: Double = 1,
+         motionEnabled: Bool = true) {
+        self.thickness = thickness
+        self.distance = distance
+        self.levitation = levitation
+        self.jitter = jitter
+        self.flow = flow
+        self.arcs = arcs
+        self.hamsterScale = hamsterScale
+        self.hamsterGap = hamsterGap
+        self.hamsterSpeed = hamsterSpeed
+        self.motionEnabled = motionEnabled
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case thickness, distance, levitation, jitter, flow, arcs, hamsterScale, hamsterGap, hamsterSpeed, motionEnabled
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(thickness: try values.decode(Double.self, forKey: .thickness),
+            distance: try values.decode(Double.self, forKey: .distance),
+            levitation: try values.decode(Double.self, forKey: .levitation),
+            jitter: try values.decode(Double.self, forKey: .jitter),
+            flow: try values.decode(Double.self, forKey: .flow),
+            arcs: try values.decode(Double.self, forKey: .arcs),
+            hamsterScale: try values.decodeIfPresent(Double.self, forKey: .hamsterScale) ?? 1,
+            hamsterGap: try values.decodeIfPresent(Double.self, forKey: .hamsterGap) ?? 5,
+            hamsterSpeed: try values.decodeIfPresent(Double.self, forKey: .hamsterSpeed) ?? 1,
+            motionEnabled: try values.decodeIfPresent(Bool.self, forKey: .motionEnabled) ?? true)
+    }
+
+    var validationError: String? {
+        for parameter in NotchLightningParameter.allCases {
+            let value = self[keyPath: parameter.keyPath]
+            if !value.isFinite || !parameter.range.contains(value) {
+                return "\(parameter.title)超出可调范围。"
+            }
+        }
+        return nil
+    }
+}
+
+enum NotchLightningParameter: String, CaseIterable {
+    case thickness, flow, arcs, hamsterScale, hamsterGap, hamsterSpeed, distance, levitation, jitter
+
+    // Legacy movement values remain valid and saved, while the panel exposes
+    // one motion switch instead of two independent amplitude controls.
+    static let visibleCases: [Self] = [
+        .thickness, .flow, .arcs, .distance, .hamsterScale, .hamsterGap, .hamsterSpeed,
+    ]
+
+    var title: String {
+        switch self {
+        case .thickness: "能量条粗细"
+        case .distance: "刘海距离"
+        case .levitation: "悬浮幅度"
+        case .jitter: "抖动强度"
+        case .flow: "能量流速"
+        case .arcs: "电弧强度"
+        case .hamsterScale: "仓鼠大小"
+        case .hamsterGap: "两侧间距"
+        case .hamsterSpeed: "仓鼠动画速度"
+        }
+    }
+
+    var range: ClosedRange<Double> {
+        switch self {
+        case .thickness: 0.65...1.45
+        case .distance: 6...36
+        case .levitation: 0...4
+        case .jitter, .arcs: 0...2
+        case .flow: 0.25...2.5
+        case .hamsterScale: 0.70...1.50
+        case .hamsterGap: 0...24
+        case .hamsterSpeed: 0.50...2
+        }
+    }
+
+    var keyPath: WritableKeyPath<NotchLightningConfiguration, Double> {
+        switch self {
+        case .thickness: \.thickness
+        case .distance: \.distance
+        case .levitation: \.levitation
+        case .jitter: \.jitter
+        case .flow: \.flow
+        case .arcs: \.arcs
+        case .hamsterScale: \.hamsterScale
+        case .hamsterGap: \.hamsterGap
+        case .hamsterSpeed: \.hamsterSpeed
+        }
+    }
+
+    func displayValue(_ value: Double) -> String {
+        switch self {
+        case .distance, .hamsterGap: String(format: "%.1f pt", value)
+        case .levitation: String(format: "%.2f pt", value)
+        case .hamsterSpeed: String(format: "%.2f×", value)
+        default: String(format: "%.0f%%", value * 100)
+        }
+    }
+
+    var help: String {
+        switch self {
+        case .thickness: "调整厚度；输出越快，能量条越粗。"
+        case .distance: "调整整组与刘海的距离。"
+        case .levitation: "整组缓慢漂移与倾斜；0 为关闭。"
+        case .jitter: "放电时微颤并回弹；0 为关闭。"
+        case .flow: "调整内流与放电节奏，不改变仓鼠。"
+        case .arcs: "调整牵引电弧与漏电；0 为关闭。"
+        case .hamsterScale: "同步缩放两侧仓鼠、跑轮和烟雾。"
+        case .hamsterGap: "调整两侧间距，连接线随之伸缩。"
+        case .hamsterSpeed: "只调整仓鼠播放倍率，动作连续。"
         }
     }
 }
@@ -246,6 +379,7 @@ final class NotchFlameSettings {
     private(set) var palette: NotchFlamePalette
     private(set) var appearance: NotchFlameAppearance
     private(set) var matrixConfiguration: NotchMatrixConfiguration
+    private(set) var lightningConfiguration: NotchLightningConfiguration
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -270,6 +404,24 @@ final class NotchFlameSettings {
         } else {
             matrixConfiguration = .standard
         }
+        if let data = defaults.data(forKey: "notchLightningConfiguration"),
+           let saved = try? JSONDecoder().decode(NotchLightningConfiguration.self, from: data),
+           saved.validationError == nil {
+            lightningConfiguration = saved
+        } else {
+            lightningConfiguration = .standard
+        }
+    }
+
+    @discardableResult
+    func setLightningConfiguration(_ configuration: NotchLightningConfiguration) -> Bool {
+        guard configuration.validationError == nil,
+              let data = try? JSONEncoder().encode(configuration) else { return false }
+        guard configuration != lightningConfiguration else { return true }
+        lightningConfiguration = configuration
+        defaults.set(data, forKey: "notchLightningConfiguration")
+        NotificationCenter.default.post(name: .emberCatFlameSettingsChanged, object: self)
+        return true
     }
 
     @discardableResult

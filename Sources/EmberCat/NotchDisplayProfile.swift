@@ -102,12 +102,15 @@ struct NotchDisplayProfile {
         panelFrame(for: .flame)
     }
 
-    func geometry(for effect: NotchEffectStyle) -> NotchFlameGeometry {
-        NotchFlameGeometry(notchWidth: anchorFrame.width, notchHeight: anchorFrame.height, effect: effect)
+    func geometry(for effect: NotchEffectStyle,
+                  lightningConfiguration: NotchLightningConfiguration = .standard) -> NotchFlameGeometry {
+        NotchFlameGeometry(notchWidth: anchorFrame.width, notchHeight: anchorFrame.height,
+            effect: effect, lightningConfiguration: lightningConfiguration)
     }
 
-    func panelFrame(for effect: NotchEffectStyle) -> CGRect {
-        let geometry = geometry(for: effect)
+    func panelFrame(for effect: NotchEffectStyle,
+                    lightningConfiguration: NotchLightningConfiguration = .standard) -> CGRect {
+        let geometry = geometry(for: effect, lightningConfiguration: lightningConfiguration)
         return CGRect(x: anchorFrame.midX - geometry.size.width / 2,
             y: anchorFrame.maxY - geometry.size.height,
             width: geometry.size.width, height: geometry.size.height)

@@ -1,0 +1,128 @@
+{
+  "cellSize": 224,
+  "columns": 8,
+  "rows": 9,
+  "frameCount": 72,
+  "wheelAnchor": [
+    0.45535714285714285,
+    0.5714285714285714
+  ],
+  "clips": [
+    {
+      "name": "slow",
+      "originalName": "慢速.gif",
+      "source": "Artwork/NotchLightning/Hamsters/slow.gif",
+      "sourceSHA256": "620fe06884b51165c7c1443bac3036708ff6103bbd7672935041b8bda8ad9f2f",
+      "firstFrame": 0,
+      "frameDurations": [
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04,
+        0.04
+      ],
+      "wheelCenter": [
+        119,
+        136
+      ],
+      "scale": 0.7087378640776699
+    },
+    {
+      "name": "fast",
+      "originalName": "高速.gif",
+      "source": "Artwork/NotchLightning/Hamsters/fast.gif",
+      "sourceSHA256": "4d6e83113d6d68ca3f52b7b1e5942e813938e56ff3d77e603220bfbc06b9f0b2",
+      "firstFrame": 24,
+      "frameDurations": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "wheelCenter": [
+        111,
+        124
+      ],
+      "scale": 0.6347826086956522
+    },
+    {
+      "name": "turbo",
+      "originalName": "极速.gif",
+      "source": "Artwork/NotchLightning/Hamsters/turbo.gif",
+      "sourceSHA256": "7539d8d34c480acce7f0e29649aaeabf9345769d1a95f3922326d8f342f5d4ee",
+      "firstFrame": 48,
+      "frameDurations": [
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03,
+        0.03
+      ],
+      "wheelCenter": [
+        107,
+        156
+      ],
+      "scale": 0.7604166666666666
+    }
+  ],
+  "cleanup": "Only detached narrow fragments in the outermost sixteen source columns are removed.",
+  "atlasSHA256": "53008906eeba76eafca4384a47042ddf2e280d2d4d28148b3914b02310237a32"
+}

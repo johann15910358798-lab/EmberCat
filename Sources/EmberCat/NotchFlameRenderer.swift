@@ -13,14 +13,31 @@ struct NotchFlameGeometry {
     let notchWidth: CGFloat
     let notchHeight: CGFloat
     var effect: NotchEffectStyle = .flame
-    // Only the narrow outer rim needs space beside the notch; flames stay inside its width.
-    let padding: CGFloat = 5
+    var lightningConfiguration: NotchLightningConfiguration = .standard
+    // The two animated generators need room beside the energy bar.
+    // Flame and Matrix keep their original narrow rim padding.
+    var padding: CGFloat {
+        effect == .lightning
+            ? ceil(notchWidth * 0.09 + CGFloat(NotchLightningMotion.hamsterSize(notchWidth: notchWidth,
+                    scale: lightningConfiguration.hamsterScale)) + CGFloat(lightningConfiguration.hamsterGap) + 7
+                + CGFloat(lightningConfiguration.levitation * 0.5 + lightningConfiguration.jitter * 0.6))
+            : 5
+    }
     static let maximumFlameDepth: CGFloat = 80
     static let maximumMatrixDepth: CGFloat = 112
+    static let maximumLightningDepth: CGFloat = 108
+
+    var maximumDepth: CGFloat {
+        switch effect {
+        case .flame: Self.maximumFlameDepth
+        case .matrix: Self.maximumMatrixDepth
+        case .lightning: CGFloat(NotchLightningMotion.maximumDepth(configuration: lightningConfiguration))
+        }
+    }
 
     var size: CGSize {
         CGSize(width: notchWidth + padding * 2,
-            height: notchHeight + (effect == .matrix ? Self.maximumMatrixDepth : Self.maximumFlameDepth) + 12)
+            height: notchHeight + maximumDepth + 12)
     }
     var notch: CGRect { CGRect(x: padding, y: 0, width: notchWidth, height: notchHeight) }
     var cornerRadius: CGFloat { min(notchWidth / 2, notchHeight * 9 / 32) }
@@ -42,12 +59,21 @@ private struct FlameUniforms {
     var matrixInteraction: SIMD4<Float>
 }
 
+private struct LightningUniforms {
+    var shape: SIMD4<Float>
+    var pose: SIMD4<Float>
+    var hamsterLeft: SIMD4<Float>
+    var hamsterRight: SIMD4<Float>
+    var hamsterAtlas: SIMD4<Float>
+}
+
 /// The live overlay, native previews and exports share the same GPU composition.
 @MainActor
 final class NotchFlameRenderer {
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    private let lightningPipeline: MTLRenderPipelineState
     private let matrixPipeline: MTLRenderPipelineState
     private let matrixPulsePipeline: MTLRenderPipelineState
     private let matrixMatterPipeline: MTLRenderPipelineState
@@ -56,9 +82,13 @@ final class NotchFlameRenderer {
     private let glyphs: MTLTexture
     private let matrixMatter: MTLTexture
     private let matrixSeed: UInt64
+    private let lightningSeed: UInt64
+    private var lightningMaterial: NotchLightningMaterial?
 
-    init(matrixSeed: UInt64 = MatrixCodeFlow.sessionSeed) throws {
+    init(matrixSeed: UInt64 = MatrixCodeFlow.sessionSeed,
+         lightningSeed: UInt64 = NotchLightningDischarges.sessionSeed) throws {
         self.matrixSeed = matrixSeed
+        self.lightningSeed = lightningSeed
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else {
             throw Self.error("Metal is unavailable")
         }
@@ -96,12 +126,15 @@ final class NotchFlameRenderer {
             throw Self.error("Could not allocate captured code texture")
         }
         self.matrixMatter = matrixMatter
-        let library = try device.makeLibrary(source: NotchFlameShader.source + NotchMatrixShader.source, options: nil)
+        let library = try device.makeLibrary(
+            source: NotchFlameShader.source + NotchMatrixShader.source + NotchLightningShader.source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
         descriptor.vertexFunction = library.makeFunction(name: "flameVertex")
         descriptor.fragmentFunction = library.makeFunction(name: "flameFragment")
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        descriptor.fragmentFunction = library.makeFunction(name: "lightningFragment")
+        lightningPipeline = try device.makeRenderPipelineState(descriptor: descriptor)
         descriptor.fragmentFunction = library.makeFunction(name: "matrixFragment")
         descriptor.colorAttachments[0].isBlendingEnabled = true
         descriptor.colorAttachments[0].sourceRGBBlendFactor = .one
@@ -134,8 +167,13 @@ final class NotchFlameRenderer {
               matrixConfiguration: NotchMatrixConfiguration = .standard,
               matrixColorScheme: NotchMatrixColorScheme = .dark,
               matrixHover: Double = 0, matrixBreathingTime: Double? = nil,
+              lightningMotionTime: Double? = nil,
+              hamsterAnimationTime: Double? = nil,
               reduceMotion: Bool = false, drawable: CAMetalDrawable? = nil,
               wait: Bool = false, matrixPass: MatrixFlowPass = .composed) throws {
+        if geometry.effect == .lightning, lightningMaterial == nil {
+            lightningMaterial = try NotchLightningMaterial(device: device)
+        }
         guard let command = queue.makeCommandBuffer() else { throw Self.error("No command buffer") }
         let effectiveTime = reduceMotion ? 8.73 : time
         let hover = matrixHover.isFinite ? min(1,max(0,matrixHover)) : 0
@@ -170,7 +208,11 @@ final class NotchFlameRenderer {
         guard let encoder = command.makeRenderCommandEncoder(descriptor:pass) else {
             throw Self.error("No render encoder")
         }
-        encoder.setRenderPipelineState(geometry.effect == .matrix ? matrixPipeline : pipeline)
+        switch geometry.effect {
+        case .flame: encoder.setRenderPipelineState(pipeline)
+        case .matrix: encoder.setRenderPipelineState(matrixPipeline)
+        case .lightning: encoder.setRenderPipelineState(lightningPipeline)
+        }
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<FlameUniforms>.stride, index: 0)
         if geometry.effect == .matrix {
             var horizon = MatrixCodeFlow.horizon(geometry: geometry, configuration: matrixConfiguration,radiusScale:radiusScale)
@@ -188,6 +230,33 @@ final class NotchFlameRenderer {
         encoder.setFragmentTexture(noise, index: 0)
         encoder.setFragmentTexture(glyphs, index: 1)
         encoder.setFragmentTexture(matrixMatter,index:2)
+        if geometry.effect == .lightning {
+            let configuration = geometry.lightningConfiguration
+            let manifest = lightningMaterial!.hamsterManifest
+            let hamsterTime = reduceMotion ? 0 : hamsterAnimationTime
+                ?? (lightningMotionTime ?? time)*configuration.hamsterSpeed
+            let hamsterSize = NotchLightningMotion.hamsterSize(notchWidth: geometry.notchWidth,
+                scale: configuration.hamsterScale)
+            let discharges = NotchLightningDischarges.events(phase: effectiveTime, seed: lightningSeed)
+            let pose = NotchLightningMotion.pose(elapsed: lightningMotionTime ?? time,
+                phase: effectiveTime, heat: Double(heat), configuration: configuration,
+                notchWidth: Double(geometry.notchWidth), reduceMotion: reduceMotion, discharges: discharges)
+            var lightning = LightningUniforms(
+                shape: SIMD4(Float(configuration.thickness), Float(configuration.distance),
+                    Float(configuration.arcs), Float(configuration.hamsterGap)), pose: pose.uniform,
+                hamsterLeft: manifest.frameIndices(at: hamsterTime, size: hamsterSize),
+                hamsterRight: manifest.frameIndices(at: hamsterTime, offset: reduceMotion ? 0 : 0.23),
+                hamsterAtlas: SIMD4(Float(manifest.columns), Float(manifest.rows),
+                    Float(manifest.wheelAnchor[0]), Float(manifest.wheelAnchor[1])))
+            encoder.setFragmentBytes(&lightning, length: MemoryLayout<LightningUniforms>.stride, index: 1)
+            discharges.map(\.uniform).withUnsafeBufferPointer { buffer in
+                encoder.setFragmentBytes(buffer.baseAddress!,
+                    length: buffer.count * MemoryLayout<NotchLightningDischargeUniform>.stride, index: 2)
+            }
+            encoder.setFragmentTexture(lightningMaterial?.hamsters, index: 3)
+            encoder.setFragmentTexture(lightningMaterial?.leaks, index: 4)
+            encoder.setFragmentTexture(lightningMaterial?.energy, index: 5)
+        }
         if geometry.effect != .matrix {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
@@ -268,8 +337,15 @@ final class NotchFlameRenderer {
                matrixConfiguration: NotchMatrixConfiguration = .standard,
                matrixColorScheme: NotchMatrixColorScheme = .dark,
                matrixHover: Double = 0, matrixBreathingTime: Double? = nil,
+               lightningConfiguration: NotchLightningConfiguration? = nil,
+               lightningMotionTime: Double? = nil,
+               hamsterAnimationTime: Double? = nil,
                visibility: Float = 1,
                reduceMotion: Bool = false, matrixPass: MatrixFlowPass = .composed) throws -> CGImage {
+        var geometry = geometry
+        if let lightningConfiguration, lightningConfiguration.validationError == nil {
+            geometry.lightningConfiguration = lightningConfiguration
+        }
         let width = Int((geometry.size.width * scale).rounded())
         let height = Int((geometry.size.height * scale).rounded())
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
@@ -285,6 +361,8 @@ final class NotchFlameRenderer {
             drawsAnchor: drawsAnchor, color: color ?? palette.color(for: speed),
             appearance: appearance, matrixConfiguration: matrixConfiguration, matrixColorScheme: matrixColorScheme,
             matrixHover:matrixHover, matrixBreathingTime:matrixBreathingTime,
+            lightningMotionTime: lightningMotionTime,
+            hamsterAnimationTime: hamsterAnimationTime,
             reduceMotion: reduceMotion, wait: true, matrixPass: matrixPass)
         var pixels = [UInt8](repeating: 0, count: width * height * 4)
         pixels.withUnsafeMutableBytes {
@@ -351,6 +429,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private let renderer: NotchFlameRenderer
     private var animation = NotchFlameAnimation()
     private var holeInteraction = MatrixHoleInteraction()
+    private(set) var lightningElapsed: Double = 0
+    private(set) var hamsterElapsed: Double = 0
     var matrixHoverAmount: Double { holeInteraction.hover }
     var matrixBreathingElapsed: Double { holeInteraction.elapsed }
     var matrixRadiusScale: Double {
@@ -369,6 +449,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     private(set) var palette: NotchFlamePalette = .standard
     private(set) var flameAppearance: NotchFlameAppearance = .standard
     private(set) var matrixConfiguration: NotchMatrixConfiguration = .standard
+    private(set) var lightningConfiguration: NotchLightningConfiguration = .standard
     // The live overlay inherits macOS appearance. Only fixed preview backgrounds override it.
     var matrixColorSchemeOverride: NotchMatrixColorScheme? {
         didSet {
@@ -389,6 +470,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
          mouseLocation: @escaping @MainActor () -> CGPoint = { NSEvent.mouseLocation },
          reduceMotion: @escaping @MainActor () -> Bool = { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }) throws {
         self.geometry = geometry
+        self.lightningConfiguration = geometry.lightningConfiguration
         self.mouseLocation = mouseLocation
         self.reduceMotion = reduceMotion
         let renderer = try renderer ?? NotchFlameRenderer()
@@ -433,7 +515,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
 
     private func redrawAppearanceIfNeeded() {
         // A frozen reduced-motion preview still changes palette immediately.
-        if effect == .matrix, !isRendering, !animation.isHidden { draw() }
+        if effect != .flame, !isRendering, !animation.isHidden { draw() }
     }
 
     func refreshDisplay(maximumFramesPerSecond: Int? = nil) {
@@ -479,6 +561,14 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         guard configuration != matrixConfiguration, configuration.validationError == nil else { return }
         matrixConfiguration = configuration
         // Tuning keeps the running phase; reduced motion redraws just once.
+        if !isRendering, !animation.isHidden { draw() }
+    }
+
+    func setLightningConfiguration(_ configuration: NotchLightningConfiguration) {
+        guard configuration != lightningConfiguration, configuration.validationError == nil else { return }
+        lightningConfiguration = configuration
+        geometry.lightningConfiguration = configuration
+        // Tuning preserves the independent energy, suspension and GIF clocks.
         if !isRendering, !animation.isHidden { draw() }
     }
 
@@ -559,6 +649,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         pauseFrames()
         stopReducedPointerTracking()
         holeInteraction.reset()
+        lightningElapsed = 0
+        hamsterElapsed = 0
         animation.reset()
         if let accessibilityObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(accessibilityObserver)
@@ -572,12 +664,27 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         let now = ProcessInfo.processInfo.systemUptime
         let reduced = reduceMotion()
         let delta = now-lastTime
-        animation.advance(by: delta, reduceMotion: reduced,
-            flow: effect == .matrix ? MatrixCodeFlow.motionMultiplier(heat: animation.heat) : flameAppearance.flow)
+        let flow: Double
+        switch effect {
+        case .flame: flow = flameAppearance.flow
+        case .matrix: flow = MatrixCodeFlow.motionMultiplier(heat: animation.heat)
+        case .lightning: flow = lightningConfiguration.flow
+        }
+        animation.advance(by: delta, reduceMotion: reduced, flow: flow)
         if effect == .matrix {
             holeInteraction.advance(by:delta,hovered:matrixContainsPointer(at:mouseLocation()),
                 reduceMotion:reduced)
         } else { holeInteraction.reset() }
+        if effect == .lightning {
+            if !reduced, delta.isFinite {
+                let step = min(0.1, max(0, delta))
+                lightningElapsed += step
+                hamsterElapsed += step*lightningConfiguration.hamsterSpeed
+            }
+        } else {
+            lightningElapsed = 0
+            hamsterElapsed = 0
+        }
         lastTime = now
         guard let drawable = currentDrawable else {
             if animation.isHidden {
@@ -594,6 +701,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
                 color: animation.color, appearance: flameAppearance, matrixConfiguration: matrixConfiguration,
                 matrixColorScheme: matrixColorScheme,
                 matrixHover:holeInteraction.hover,matrixBreathingTime:holeInteraction.elapsed,
+                lightningMotionTime: lightningElapsed,
+                hamsterAnimationTime: hamsterElapsed,
                 reduceMotion: reduced, drawable: drawable)
             renderedFrameCount &+= 1
         } catch {
