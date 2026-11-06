@@ -1,5 +1,7 @@
 # Sparkle 与 GitHub Releases
 
+[返回首页](../README.md) · [开发指南](development.md)
+
 客户端从最新正式 Release 的 `appcast.xml` 检查更新。每个更新条目的下载地址固定到对应版本的 ZIP，避免后续 Release 改变已公布安装包的内容。首次接入版本为 0.6.15；旧版需要手动安装一次。
 
 ## 应用配置
