@@ -67,7 +67,7 @@ struct TokenSourcesView: View {
             Divider()
             HStack(spacing: 0) {
                 sourceList
-                    .frame(width: 200)
+                    .frame(width: 176)
                 Divider()
                 ZStack(alignment: .topLeading) {
                     if let source = selectedSource {
@@ -155,6 +155,7 @@ struct TokenSourcesView: View {
                                 Text(source.id.displayName)
                                     .font(.system(size: 12, weight: .medium))
                                     .lineLimit(1)
+                                    .minimumScaleFactor(0.9)
                                 Text(rate(source.speed))
                                     .font(.system(size: 11))
                                     .monospacedDigit()
@@ -184,7 +185,7 @@ struct TokenSourcesView: View {
     }
 
     private func sourceDetail(_ source: TokenSourceDetails) -> some View {
-        VStack(alignment: .leading, spacing: 13) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 9) {
                 SourceIconView(source: source.id, size: 30)
                 VStack(alignment: .leading, spacing: 4) {
@@ -194,42 +195,52 @@ struct TokenSourcesView: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
-                Spacer()
+                Spacer(minLength: 10)
+                VStack(alignment: .trailing, spacing: 4) {
+                    Text(rate(source.speed))
+                        .font(.system(size: 23, weight: .medium, design: .rounded))
+                        .monospacedDigit()
+                        .contentTransition(.numericText())
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: source.speed)
+                    Text("当前来源输出")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
             }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(rate(source.speed))
-                    .font(.system(size: 28, weight: .medium, design: .rounded))
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: source.speed)
-                Text(source.estimatedSpeed > 0
-                     ? "其中估算 \(rate(source.estimatedSpeed)) · \(Int((source.estimatedSpeed / source.speed * 100).rounded()))%"
-                     : "当前输出速度 · 约 3 秒窗口")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
-            HStack(spacing: 28) {
+            HStack(spacing: 24) {
                 metric("今日输出", value: "\(source.source.today.output.formatted()) tok")
                 metric("今日会话", value: source.source.sessionCount.formatted())
-            }
-            Text("生成中 \(source.source.activeAgents) · 工具中 \(source.toolsCount)")
-                .font(.system(size: 11))
+                Spacer(minLength: 0)
+                VStack(alignment: .trailing, spacing: 5) {
+                    Text("生成中 \(source.source.activeAgents) · 工具中 \(source.toolsCount)")
+                        .font(.system(size: 10))
+                    if source.estimatedSpeed > 0 {
+                        Text("估算 \(rate(source.estimatedSpeed)) · \(Int((source.estimatedSpeed / source.speed * 100).rounded()))%")
+                            .font(.system(size: 9))
+                            .lineLimit(1)
+                    }
+                }
                 .foregroundStyle(.secondary)
+            }
             Divider()
-            VStack(alignment: .leading, spacing: 5) {
+            TokenConversationListView(agents: viewModel.snapshot.agents, source: source.id)
+                .frame(maxHeight: .infinity)
+            Divider()
+            HStack(spacing: 8) {
                 Text("读取位置")
-                    .font(.system(size: 10))
+                    .font(.system(size: 9))
                     .foregroundStyle(.secondary)
+                    .fixedSize()
                 Text(source.displayPath.isEmpty ? "尚未发现本地记录" : source.displayPath)
-                    .font(.system(size: 11, design: .monospaced))
-                    .lineLimit(3)
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
                     .truncationMode(.middle)
                     .textSelection(.enabled)
                     .help(source.source.rootPath)
             }
-            Spacer(minLength: 0)
         }
-        .padding(18)
+        .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
