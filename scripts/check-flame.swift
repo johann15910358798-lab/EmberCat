@@ -150,6 +150,34 @@ struct FlameCheck {
         for _ in 0..<300 { animation.advance(by: 1.0 / 60) }
         try require(animation.isHidden && !animation.needsFrames(reduceMotion: false),
             "Fully extinguish and stop drawing at zero")
+        for effect in [NotchEffectStyle.matrix, .lightning] {
+            var idle = NotchFlameAnimation()
+            let start = idle.phase
+            idle.setSpeed(0, effect: effect)
+            try require(idle.needsFrames(reduceMotion: false), "Idle \(effect.rawValue) starts from a hidden state")
+            for _ in 0..<300 { idle.advance(by: 1.0 / 60) }
+            let idleTravel = idle.phase-start
+            try require(idle.heat == 0 && idle.targetHeat == 0 && idle.visibility == 1
+                && idle.needsFrames(reduceMotion: false) && idleTravel > 0 && idleTravel < slowTravel/10,
+                "Idle \(effect.rawValue) remains visible and moves very slowly without inventing measured heat")
+            idle.setSpeed(20, effect: effect)
+            for _ in 0..<300 { idle.advance(by: 1.0 / 60) }
+            try require(idle.motionScale == 1 && idle.heat == NotchFlameAnimation.heat(for: 20),
+                "Fresh output smoothly restores the regular \(effect.rawValue) clock")
+            idle.setSpeed(0, active: false, effect: effect)
+            for _ in 0..<300 { idle.advance(by: 1.0 / 60) }
+            try require(idle.isHidden && !idle.needsFrames(reduceMotion: false),
+                "An explicit off still stops idle \(effect.rawValue)")
+            idle.setSpeed(0, effect: effect)
+            let reducedPhase = idle.phase
+            for _ in 0..<300 { idle.advance(by: 1.0 / 60, reduceMotion: true) }
+            try require(idle.heat == 0 && idle.visibility == 1 && idle.phase == reducedPhase
+                && !idle.needsFrames(reduceMotion: true),
+                "Reduced motion retains a static idle \(effect.rawValue) without a frame loop")
+            idle.reset()
+            try require(idle.isHidden && !idle.needsFrames(reduceMotion: false),
+                "Stopping \(effect.rawValue) clears the idle visibility target")
+        }
         animation.setSpeed(180)
         let stillPhase = animation.phase
         for _ in 0..<300 { animation.advance(by: 1.0 / 60, reduceMotion: true) }
@@ -343,6 +371,13 @@ struct FlameCheck {
         try require(idle.allSatisfy { $0 == 0 }, "No visible fire at zero tok/s")
         let idleAnchor = bytes(try renderer.image(geometry: geometry, time: 8.73, speed: 0, drawsAnchor: true))
         try require(idleAnchor.allSatisfy { $0 == 0 }, "Zero speed also removes the preview island")
+        for effect in [NotchEffectStyle.matrix, .lightning] {
+            let idleGeometry = NotchFlameGeometry(notchWidth: 180, notchHeight: 32, effect: effect)
+            let idlePixels = bytes(try renderer.image(geometry: idleGeometry, time: 8.73, speed: 0))
+            let offPixels = bytes(try renderer.image(geometry: idleGeometry, time: 8.73, speed: 0, active: false))
+            try require(idlePixels.contains { $0 > 0 } && offPixels.allSatisfy { $0 == 0 },
+                "The GPU keeps zero-rate \(effect.rawValue) visible while respecting an explicit off")
+        }
         let off = bytes(try renderer.image(geometry: geometry, time: 8.73, speed: 180,
             active: false, drawsAnchor: true))
         try require(off.allSatisfy { $0 == 0 }, "Disabling also removes the virtual island")

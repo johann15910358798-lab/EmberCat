@@ -15,13 +15,13 @@ struct MatrixHoleInteraction {
         return (0.58+0.42*load)*(0.98+0.02*breath)
     }
 
-    mutating func advance(by delta: Double, hovered: Bool, reduceMotion: Bool) {
+    mutating func advance(by delta: Double, hovered: Bool, reduceMotion: Bool, motionScale: Double = 1) {
         guard delta.isFinite,delta >= 0 else { return }
         let step = min(0.1,delta)
         let target = hovered ? 1.0 : 0.0
         if reduceMotion { hover = target }
         else {
-            elapsed += step
+            elapsed += step*(motionScale.isFinite ? min(1,max(0,motionScale)) : 1)
             hover += (target-hover)*(1-exp(-step/(hovered ? 0.14 : 0.24)))
             if abs(target-hover) < 0.001 { hover = target }
         }
@@ -282,19 +282,17 @@ enum MatrixCodeFlow {
                       pass: MatrixFlowPass = .composed,
                       seed: UInt64 = previewSeed) -> MatrixFlowFrame {
         let width = Double(geometry.notchWidth)
-        guard heat.isFinite,heat > 0,time.isFinite,width.isFinite,width > 0,
+        guard heat.isFinite,heat >= 0,time.isFinite,width.isFinite,width > 0,
               geometry.notchHeight.isFinite,configuration.validationError == nil,
               radiusScale.isFinite,radiusScale >= 0.4,radiusScale <= 1 else { return MatrixFlowFrame() }
         let fit = min(1.12,width/180)
         let aperture = horizon(geometry:geometry,configuration:configuration,radiusScale:radiusScale)
         let sink = SIMD2(Double(aperture.x),Double(aperture.y))
         let outerDisk = MatrixAccretionGeometry.outer(width:configuration.rimWidth)
-        let budget = 4+Double(maximumPulses-4)*pow(Double(min(1,heat)),0.92)
         var result = MatrixFlowFrame()
         for slot in 0..<maximumPulses {
-            let loadOpacity = smooth(Double(slot),Double(slot+1),budget)
-            guard loadOpacity > 0.0001 else { continue }
-            // Keep both rounded ends and the two mouth columns present at every load.
+            // The density setting controls births across the same full wall at every rate.
+            // Token output changes the clock and hole size, never removes source columns.
             let column = emissionOrder[slot]
             let lane = mix(seed &+ UInt64(column) &* 0xD1B5_4A32_D192_ED03)
             let direct = makePath(geometry:geometry,configuration:configuration,radiusScale:radiusScale,column:column,seed:lane,lingering:false)
@@ -352,7 +350,7 @@ enum MatrixCodeFlow {
                             let orbitRate = (3.1+0.8*random(event,41))*pow(
                                 Double(MatrixAccretionGeometry.inner)/max(Double(MatrixAccretionGeometry.inner),r),0.65)
                             let angle = Double(entry.polar.x)-diskAge*orbitRate
-                            let contribution = loadOpacity*Double(0.57+depth*0.40)*(0.5+0.5*random(event,25))
+                            let contribution = Double(0.57+depth*0.40)*(0.5+0.5*random(event,25))
                             let opacity = diskHandoff*(1-smooth(0.82,1,progress))*density*contribution
                             let entryOffset = entry.position-sink
                             let screenAngle = atan2(entryOffset.y,entryOffset.x)+diskAge*(1.25+0.25*random(event,41))
@@ -391,7 +389,7 @@ enum MatrixCodeFlow {
                                 let envelope = sin(Double.pi*flashProgress)*pow(1-flashProgress,1.5)
                                 result.flashes.append(.init(id:event,
                                     center:SIMD2(Float(center.x),Float(center.y)),
-                                    intensity:Float(envelope*density*loadOpacity*(0.12+0.07*random(event,38))),
+                                    intensity:Float(envelope*density*(0.12+0.07*random(event,38))),
                                     radius:Float((1.25+0.55*random(event,39))*fit*(1-0.35*flashProgress)),
                                     progress:Float(flashProgress)))
                             }
@@ -410,7 +408,7 @@ enum MatrixCodeFlow {
                             let envelope = sin(Double.pi*progress)*pow(1-progress,1.5)
                             result.flashes.append(MatrixCaptureFlash(id:event,
                                 center:SIMD2(Float(center.x),Float(center.y)),
-                                intensity:Float(envelope*density*loadOpacity*(0.12+0.07*random(event,38))),
+                                intensity:Float(envelope*density*(0.12+0.07*random(event,38))),
                                 radius:Float((1.25+0.55*random(event,39))*fit*(1-0.35*progress)),
                                 progress:Float(progress)))
                         }
@@ -443,7 +441,7 @@ enum MatrixCodeFlow {
             }
             guard samples.contains(where: { $0.opacity > 0.0001 }) else { continue }
             result.pulses.append(MatrixPulse(id:lane,depth:depth,
-                opacity:Float(loadOpacity)*(0.57+depth*0.40),
+                opacity:0.57+depth*0.40,
                 sourceX:Float(direct.points[0].position.x),bundle:column/8,samples:samples))
         }
         result.pulses.sort { $0.depth == $1.depth ? $0.id < $1.id : $0.depth < $1.depth }

@@ -241,8 +241,11 @@ struct FlamePreviewCheck {
             slider.doubleValue = rate
             act(slider)
             if rate == 0 { pump(4.3) }
-            try check("Matrix simulated speed \(rate)", lit: rate > 0)
-            if rate == 0 { try require(flames.allSatisfy { !$0.isRendering }, "Idle Matrix preview stops drawing") }
+            try check("Matrix simulated speed \(rate)")
+            if rate == 0 {
+                let idlePreset = try control("flame-preview-band-0",as:NSButton.self)
+                try require(idlePreset.title == "0 · 慢速待机", "The zero-rate Matrix preset describes its idle animation")
+            }
         }
         let densitySlider = try control("matrix-style-density", as: NSSlider.self)
         densitySlider.doubleValue = 1.37

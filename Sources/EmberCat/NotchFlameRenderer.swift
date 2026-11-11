@@ -180,7 +180,7 @@ final class NotchFlameRenderer {
         let hover = matrixHover.isFinite ? min(1,max(0,matrixHover)) : 0
         let radiusScale = MatrixHoleInteraction.radiusScale(heat:Double(heat),
             time:matrixBreathingTime ?? time,reduceMotion:reduceMotion)
-        let matrixFrame = geometry.effect == .matrix && visibility > 0.0001 && heat > 0.0001
+        let matrixFrame = geometry.effect == .matrix && visibility > 0.0001
             ? MatrixCodeFlow.frame(geometry: geometry, time: effectiveTime,
                 heat: heat, configuration: matrixConfiguration,radiusScale:radiusScale,pass: matrixPass, seed: matrixSeed)
             : MatrixFlowFrame()
@@ -261,7 +261,7 @@ final class NotchFlameRenderer {
         if geometry.effect != .matrix {
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
-        if geometry.effect == .matrix, visibility > 0.0001, heat > 0.0001 {
+        if geometry.effect == .matrix, visibility > 0.0001 {
             let vertices = matrixFrame.vertices
             if !vertices.isEmpty {
                 encoder.setRenderPipelineState(matrixPulsePipeline)
@@ -358,7 +358,7 @@ final class NotchFlameRenderer {
         }
         let heat = Float(NotchFlameAnimation.heat(for: speed))
         try draw(texture: texture, geometry: geometry, time: time,
-            heat: heat, visibility: active && heat > 0 ? visibility : 0,
+            heat: heat, visibility: active && (heat > 0 || geometry.effect.hasIdleAnimation) ? visibility : 0,
             drawsAnchor: drawsAnchor, color: color ?? palette.color(for: speed),
             appearance: appearance, matrixConfiguration: matrixConfiguration, matrixColorScheme: matrixColorScheme,
             matrixHover:matrixHover, matrixBreathingTime:matrixBreathingTime,
@@ -535,7 +535,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
     func setSpeed(_ speed: Double, active: Bool = true) {
         lastSpeed = speed
         lastActive = active
-        animation.setSpeed(speed, active: active, color: palette.color(for: speed))
+        animation.setSpeed(speed, active: active, effect: effect, color: palette.color(for: speed))
         if accessibilityObserver == nil {
             accessibilityObserver = NSWorkspace.shared.notificationCenter.addObserver(
                 forName: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification,
@@ -712,7 +712,7 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
         animation.advance(by: delta, reduceMotion: reduced, flow: flow)
         if effect == .matrix {
             holeInteraction.advance(by:delta,hovered:matrixContainsPointer(at:mouseLocation()),
-                reduceMotion:reduced)
+                reduceMotion:reduced,motionScale:animation.motionScale)
         } else { holeInteraction.reset() }
         if effect == .lightning {
             let target = lightningContainsPointer(at: mouseLocation()) ? 0.0 : 1.0
@@ -725,8 +725,8 @@ final class NotchFlameMetalView: MTKView, MTKViewDelegate {
             }
             if !reduced, delta.isFinite {
                 let step = min(0.1, max(0, delta))
-                lightningElapsed += step
-                hamsterElapsed += step*lightningConfiguration.hamsterSpeed
+                lightningElapsed += step*animation.motionScale
+                hamsterElapsed += step*animation.motionScale*lightningConfiguration.hamsterSpeed
             }
         } else {
             lightningVisibility = 1

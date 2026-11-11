@@ -237,9 +237,13 @@ struct LightningCheck {
         let reduced = bytes(try renderer.image(geometry: geometry, time: 1, speed: 180, reduceMotion: true))
         try require(reduced == bytes(try renderer.image(geometry: geometry, time: 100, speed: 180, reduceMotion: true)),
             "Reduced motion freezes every lightning layer")
-        for rate in [0.0, -20, Double.nan, Double.infinity] {
+        let idlePixels = bytes(try renderer.image(geometry:geometry,time:12.4,speed:0,drawsAnchor:true))
+        let idleLater = bytes(try renderer.image(geometry:geometry,time:12.45,speed:0,drawsAnchor:true))
+        try require(idlePixels.contains { $0 > 0 } && idlePixels != idleLater,
+            "Zero output keeps visible, animated hamsters and an energy bar")
+        for rate in [-20.0, Double.nan, Double.infinity] {
             try require(bytes(try renderer.image(geometry: geometry, time: 12.4, speed: rate,
-                drawsAnchor: true)).allSatisfy { $0 == 0 }, "Idle and invalid speeds leave no lightning or anchor")
+                drawsAnchor: true)) == idlePixels, "Invalid speeds safely use the idle appearance")
         }
         try require(bytes(try renderer.image(geometry: geometry, time: 12.4, speed: 180,
             active: false, drawsAnchor: true)).allSatisfy { $0 == 0 }, "Disabled lightning is transparent")
@@ -284,7 +288,7 @@ struct LightningCheck {
         if CommandLine.arguments.contains("--native") {
             let controller = NotchFlameController(settings: settings)
             defer { controller.shutdown() }
-            controller.update(speed: 90)
+            controller.update(speed: 0)
             pump(0.6)
             guard let panel = NSApp.windows.first(where: { $0.title == "EmberCat · \(NotchEffectStyle.lightning.title)" }),
                   let view = panel.contentView as? NotchFlameMetalView else {
@@ -292,7 +296,10 @@ struct LightningCheck {
                 return
             }
             try require(panel.ignoresMouseEvents && !panel.canBecomeKey && !panel.canBecomeMain,
-                "Lightning remains a noninteractive overlay")
+                "Lightning starts at zero output and remains a noninteractive overlay")
+            try require(panel.isVisible,"Idle lightning is visible before any token output")
+            controller.update(speed:90)
+            pump(0.6)
             try require(panel.frame == NotchDisplayProfile.current()?.panelFrame(for: .lightning),
                 "The horizontal lightning overlay follows the display: actual=\(panel.frame), expected=\(String(describing:NotchDisplayProfile.current()?.panelFrame(for:.lightning)))")
             let count = view.renderedFrameCount
@@ -308,7 +315,20 @@ struct LightningCheck {
                 "Switching back restores lightning geometry")
             controller.update(speed: 0)
             pump(4.5)
-            try require(!panel.isVisible && !view.isRendering, "Zero output fades away and stops rendering")
+            try require(panel.isVisible, "Zero output retains both hamsters and the energy bar")
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let phase = view.animationPhase, suspension = view.lightningElapsed, hamster = view.hamsterElapsed
+                pump(0.4)
+                try require(view.isRendering && view.animationPhase > phase && view.animationPhase-phase < 0.03
+                    && view.lightningElapsed > suspension && view.lightningElapsed-suspension < 0.08
+                    && view.hamsterElapsed > hamster && view.hamsterElapsed-hamster < 0.08,
+                    "Idle energy, suspension and hamster GIF clocks all advance very slowly")
+            }
+            settings.isEnabled = false
+            try require(!panel.isVisible && !view.isRendering,"Turning off still stops idle lightning immediately")
+            settings.isEnabled = true
+            pump()
+            try require(panel.isVisible,"Turning on at zero output restores idle lightning")
             controller.update(speed: 180)
             pump()
             try require(panel.isVisible, "Fresh output resumes lightning")
@@ -322,7 +342,7 @@ struct LightningCheck {
             try require(!panel.isVisible && !view.isRendering, "Display sleep releases rendering")
             NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
             pump()
-            try require(!panel.isVisible, "Waking waits for a fresh measured speed")
+            try require(panel.isVisible, "Waking restores idle lightning without replaying pre-sleep output")
             controller.update(speed: 90)
             pump()
             try require(panel.isVisible, "A fresh post-wake rate resumes the column")

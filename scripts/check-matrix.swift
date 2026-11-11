@@ -119,6 +119,10 @@ struct MatrixCheck {
         let geometry = NotchFlameGeometry(notchWidth:180,notchHeight:32,effect:.matrix)
         let heat = Float(NotchFlameAnimation.heat(for:90))
         let renderer = try NotchFlameRenderer(matrixSeed:seed)
+        let idlePixels = bytes(try renderer.image(geometry:geometry,time:8.73,speed:0))
+        let idleLater = bytes(try renderer.image(geometry:geometry,time:8.78,speed:0))
+        try require(idlePixels.contains { $0 > 0 } && idlePixels != idleLater,
+            "Zero-rate Matrix still contains a black hole and animated code")
         let hole = MatrixCodeFlow.horizon(geometry:geometry)
         func isVisible(_ sample: MatrixPulseSample) -> Bool {
             let physicalDistance = distance(sample.center-SIMD2(hole.x,hole.y))
@@ -604,7 +608,7 @@ struct MatrixCheck {
         var phaseSteps: [Double] = []
         for rate in loadRates {
             var animation = NotchFlameAnimation()
-            animation.setSpeed(rate)
+            animation.setSpeed(rate,effect:.matrix)
             for _ in 0..<240 {
                 animation.advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:animation.heat))
             }
@@ -618,6 +622,12 @@ struct MatrixCheck {
         var loadTravelRatios: [Float] = []
         for phase in stride(from:0.0,through:24,by:0.4) {
             let frames = loadHeats.map { MatrixCodeFlow.frame(geometry:geometry,time:phase,heat:$0,seed:seed) }
+            for idleHeat: Float in [0,Float(NotchFlameAnimation.heat(for:1))] {
+                let idleFrame = MatrixCodeFlow.frame(geometry:geometry,time:phase,heat:idleHeat,seed:seed)
+                try require(idleFrame.pulses == frames[2].pulses && idleFrame.diskMatter == frames[2].diskMatter
+                    && idleFrame.ports == frames[2].ports && idleFrame.flashes == frames[2].flashes,
+                    "Idle and near-zero output keep the same code density, births and captured matter as the preview")
+            }
             for (index,frame) in frames.enumerated() {
                 peakVertices = max(peakVertices,frame.vertices.count)
                 for pulse in frame.pulses {
@@ -644,9 +654,9 @@ struct MatrixCheck {
             }
             loadSamples += 1
         }
-        try require(density[1] > density[0]*1.4 && density[2] > density[1]*1.25
-            && glyphCounts[0] < glyphCounts[1] && glyphCounts[1] < glyphCounts[2],
-            "Higher tok/s increases the visible wall and code density")
+        try require(density[0] == density[1] && density[1] == density[2]
+            && glyphCounts[0] == glyphCounts[1] && glyphCounts[1] == glyphCounts[2],
+            "The chosen density produces the same code quantity and opacity at every tok/s")
         try require(phaseSteps[0] < phaseSteps[1] && phaseSteps[1] < phaseSteps[2]
             && loadTravelRatios.count > 50 && median(loadTravelRatios) > 2,
             "Native phase integration moves existing characters faster at higher tok/s")
@@ -654,7 +664,7 @@ struct MatrixCheck {
         var transitionTravel: Float = 0
         for rate in [20.0,90,180,20] {
             let previousPhase = transition.phase
-            transition.setSpeed(rate)
+            transition.setSpeed(rate,effect:.matrix)
             try require(transition.phase == previousPhase,"Rate changes never reset the phase")
             for _ in 0..<150 {
                 let previous = glyphs(MatrixCodeFlow.frame(geometry:geometry,time:transition.phase,
@@ -671,13 +681,16 @@ struct MatrixCheck {
         }
         try require(transitionTravel > 0 && transitionTravel < 6,"Load transitions keep every existing glyph continuous")
         let frozenPhase = transition.phase
-        transition.setSpeed(180)
+        transition.setSpeed(180,effect:.matrix)
         transition.advance(by:1/60,reduceMotion:true,flow:MatrixCodeFlow.motionMultiplier(heat:transition.heat))
         try require(transition.phase == frozenPhase,"Reduced motion freezes the load-driven phase")
-        transition.setSpeed(0)
+        transition.setSpeed(0,effect:.matrix)
         for _ in 0..<360 { transition.advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:transition.heat)) }
-        try require(transition.isHidden && !transition.needsFrames(reduceMotion:false),
-            "Zero load fades out and stops requesting frames")
+        let idlePhase = transition.phase
+        transition.advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:transition.heat))
+        try require(transition.heat == 0 && transition.visibility == 1 && transition.needsFrames(reduceMotion:false)
+            && transition.phase > idlePhase && transition.phase-idlePhase < phaseSteps[0]/10,
+            "Zero load keeps Matrix visible with a much slower continuous clock")
 
         func liveScale(_ speed:Double,_ time:Double) -> Double {
             MatrixHoleInteraction.radiusScale(heat:NotchFlameAnimation.heat(for:speed),time:time)
@@ -692,9 +705,10 @@ struct MatrixCheck {
         let reducedA = bytes(try renderer.image(geometry: geometry,time: 1,speed: 90,reduceMotion: true))
         let reducedB = bytes(try renderer.image(geometry: geometry,time: 20,speed: 90,reduceMotion: true))
         try require(reducedA == reducedB,"Reduced motion freezes the entire effect")
-        for speed in [0.0,-1,.nan,.infinity] {
+        let idleWithAnchor = bytes(try renderer.image(geometry:geometry,time:12.4,speed:0,drawsAnchor:true))
+        for speed in [-1.0,.nan,.infinity] {
             try require(bytes(try renderer.image(geometry: geometry,time: 12.4,speed: speed,
-                drawsAnchor: true)).allSatisfy { $0 == 0 },"Idle and invalid rates leave no effect")
+                drawsAnchor: true)) == idleWithAnchor,"Invalid rates safely fall back to idle Matrix")
         }
         try require(bytes(try renderer.image(geometry: geometry,time: 12.4,speed: 90,
             active: false,drawsAnchor: true)).allSatisfy { $0 == 0 },"Disabled effect is transparent")
@@ -1266,7 +1280,7 @@ struct MatrixCheck {
         if CommandLine.arguments.contains("--native") {
             let controller = NotchFlameController(settings: settings)
             defer { controller.shutdown() }
-            controller.update(speed: 90)
+            controller.update(speed: 0)
             pump(1)
             guard let panel = NSApp.windows.first(where: { $0.title == "EmberCat · Matrix 代码雨" }),
                   let view = panel.contentView as? NotchFlameMetalView,
@@ -1276,7 +1290,9 @@ struct MatrixCheck {
                 return
             }
             try require(panel.isVisible && panel.ignoresMouseEvents && !panel.canBecomeKey,
-                "The live effect remains noninteractive")
+                "The native Matrix surface starts at zero output and remains noninteractive")
+            controller.update(speed:90)
+            pump(1)
             report["nativeDisplay"] = ["name":profile.screenName,"physicalNotch":profile.notchFrame != nil,
                 "scale":profile.scale,"maximumFramesPerSecond":profile.maximumFramesPerSecond]
             try require(panel.frame == profile.panelFrame(for: .matrix), "Matrix uses its own taller display geometry")
@@ -1305,7 +1321,27 @@ struct MatrixCheck {
                 "Switch back to Matrix and restore its extent")
             controller.update(speed: 0)
             pump(4.3)
-            try require(!panel.isVisible && !view.isRendering, "Zero output fades out and stops Matrix rendering")
+            try require(panel.isVisible, "Zero output retains the native Matrix surface")
+            if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+                let phase = view.animationPhase, breath = view.matrixBreathingElapsed
+                pump(0.4)
+                try require(view.isRendering && view.animationPhase > phase && view.animationPhase-phase < 0.03
+                    && view.matrixBreathingElapsed > breath && view.matrixBreathingElapsed-breath < 0.08,
+                    "Idle Matrix code and breathing advance slowly on the actual native view")
+            }
+            let idleConfiguration = NotchMatrixConfiguration(density:2.35,verticalOffset:28)
+            settings.setMatrixConfiguration(idleConfiguration)
+            try require(view.matrixConfiguration == idleConfiguration && panel.isVisible,
+                "Saving density and position at zero output updates the real surface immediately")
+            settings.setMatrixConfiguration(.standard)
+            settings.effect = .flame
+            pump(4.3)
+            try require(view.effect == .flame && !panel.isVisible && !view.isRendering,
+                "Switching from idle Matrix to zero-rate flame fades out the shared surface")
+            settings.effect = .matrix
+            pump(0.4)
+            try require(view.effect == .matrix && panel.isVisible,
+                "Selecting Matrix at zero output restores its idle surface")
             controller.update(speed: 90)
             pump(0.3)
             try require(panel.isVisible, "Fresh output resumes Matrix")
@@ -1317,7 +1353,7 @@ struct MatrixCheck {
             try require(!panel.isVisible && !view.isRendering, "Display sleep stops Matrix")
             NSWorkspace.shared.notificationCenter.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
             pump(0.1)
-            try require(!panel.isVisible, "Wake does not replay an old speed")
+            try require(panel.isVisible, "Wake resumes idle Matrix without replaying an old speed")
             controller.update(speed: 90)
             pump(0.3)
             try require(panel.isVisible, "New output resumes after wake")

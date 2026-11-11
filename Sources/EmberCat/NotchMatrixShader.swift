@@ -136,7 +136,7 @@ enum NotchMatrixShader {
         float outside = smoothstep(-aa,aa,edge.y);
         float3 black = float3(.001,.003,.002);
         float anchor = (1.0-outside)*u.drawsAnchor;
-        if (edge.y < -aa || u.heat < .0001) return float4(black*anchor,anchor)*u.visibility;
+        if (edge.y < -aa) return float4(black*anchor,anchor)*u.visibility;
 
         float4 result = float4(0.0);
         float n = max(edge.y,0.0);

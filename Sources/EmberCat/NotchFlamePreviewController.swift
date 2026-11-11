@@ -258,7 +258,7 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
 
     @objc private func changeSpeed() {
         speedLabel.stringValue = String(format: "预览 · %.0f tok/s",speed.doubleValue)
-        for scene in scenes { scene.flame.setSpeed(speed.doubleValue, active: speed.doubleValue>0) }
+        for scene in scenes { scene.flame.setSpeed(speed.doubleValue) }
     }
 
     @objc private func selectRate(_ sender: NSButton) {
@@ -312,7 +312,7 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
         for (index, rate) in rates.enumerated() {
             let title: String
             if index == 0 {
-                title = "0 · 熄灭"
+                title = selectedEffect.hasIdleAnimation ? "0 · 慢速待机" : "0 · 熄灭"
             } else {
                 switch selectedEffect {
                 case .flame: title = "第 \(index) 档 · \(Int(rate.rounded()))"
@@ -365,11 +365,11 @@ final class NotchFlamePreviewController: NSWindowController, NSWindowDelegate {
             height = 716
         case .matrix:
             titleLabel.stringValue = "Matrix · 代码雨"
-            subtitleLabel.stringValue = "黑洞大小随 tok/s 平滑变化，本体轻微呼吸；鼠标经过虚化，洞心保持深黑。"
+            subtitleLabel.stringValue = "黑洞大小随 tok/s 变化，代码密度保持设定；无输出时慢速待机，鼠标经过虚化。"
             height = 754
         case .lightning:
             titleLabel.stringValue = selectedEffect.title
-            subtitleLabel.stringValue = "仓鼠随速度换挡，能量条随机放电；鼠标经过时隐藏，移开恢复。"
+            subtitleLabel.stringValue = "仓鼠随速度换挡，无输出时慢速待机；鼠标经过时隐藏，移开恢复。"
             height = 704
         }
         paletteEditor?.isHidden = selectedEffect != .flame
@@ -470,17 +470,19 @@ func exportLightningPreview(to folder: URL, configuration: NotchLightningConfigu
             [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
         var animations = rates.map { rate -> NotchFlameAnimation in
             var animation = NotchFlameAnimation()
-            animation.setSpeed(transition ? 0 : rate)
+            animation.setSpeed(transition ? 0 : rate, effect: .lightning)
             for _ in 0..<300 { animation.advance(by: 1/60, flow: configuration.flow) }
             return animation
         }
+        var motionClocks = [Double](repeating: 0, count: animations.count)
         for frame in 0..<frames {
             let seconds = Double(frame)/fps
             let input = seconds < 2.5 ? 20.0 : seconds < 5 ? 90 : seconds < 7.5 ? 180 : 0
             let count = transition ? 1 : rates.count
             for index in 0..<count {
-                animations[index].setSpeed(transition ? input : rates[index])
+                animations[index].setSpeed(transition ? input : rates[index], effect: .lightning)
                 animations[index].advance(by: 1/fps, flow: configuration.flow)
+                motionClocks[index] += 1/fps*animations[index].motionScale
             }
             let image = try flameReviewImage(width: column*count, height: row+52, scale: 1) { context in
                 flameText(transition ? "仓鼠发电机 · 连续换挡" : "仓鼠发电机 · 三档动效", at: CGPoint(x: 16, y: 14),
@@ -489,7 +491,8 @@ func exportLightningPreview(to folder: URL, configuration: NotchLightningConfigu
                     let animation = animations[index]
                     let displaySpeed = pow(animation.heat, 1/0.8)*180
                     let rendered = try renderer.image(geometry: geometry, time: animation.phase,
-                        speed: displaySpeed, scale: 2, lightningMotionTime: seconds,
+                        speed: displaySpeed, scale: 2, lightningMotionTime: motionClocks[index],
+                        hamsterAnimationTime: motionClocks[index]*configuration.hamsterSpeed,
                         visibility: Float(animation.visibility))
                     drawFlameSample(context: context, image: rendered, geometry: geometry,
                         rect: CGRect(x: index*column+8, y: 48, width: column-16, height: row-8), background: .dark,
@@ -788,7 +791,7 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
     var breathingClocks = [MatrixHoleInteraction](repeating:MatrixHoleInteraction(),count:3)
     var rainClocks = [NotchFlameAnimation](repeating:NotchFlameAnimation(),count:3)
     for i in 0..<3 {
-        rainClocks[i].setSpeed(bodyRates[i])
+        rainClocks[i].setSpeed(bodyRates[i],effect:.matrix)
         for _ in 0..<240 {
             rainClocks[i].advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:rainClocks[i].heat))
         }
@@ -799,7 +802,7 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
             flameText("独立模拟输入 · 洞内荧光随实际代码进入短暂亮起",at:CGPoint(x:24,y:39),size:10,color:.lightGray)
             for i in 0..<3 {
                 rainClocks[i].advance(by:1/50,flow:MatrixCodeFlow.motionMultiplier(heat:rainClocks[i].heat))
-                breathingClocks[i].advance(by:1/50,hovered:false,reduceMotion:false)
+                breathingClocks[i].advance(by:1/50,hovered:false,reduceMotion:false,motionScale:rainClocks[i].motionScale)
                 let image = try renderer.image(geometry:geometry,time:rainClocks[i].phase,speed:bodyRates[i],scale:4,
                     matrixConfiguration:floatingConfiguration,matrixBreathingTime:breathingClocks[i].elapsed)
                 let bodyScale = MatrixHoleInteraction.radiusScale(heat:rainClocks[i].heat,time:breathingClocks[i].elapsed)
@@ -899,7 +902,7 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
     CGImageDestinationSetProperties(destination, [kCGImagePropertyGIFDictionary:
         [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
     var animation = NotchFlameAnimation()
-    animation.setSpeed(90)
+    animation.setSpeed(90,effect:.matrix)
     for _ in 0..<240 {
         animation.advance(by: 1.0 / 60, flow: MatrixCodeFlow.motionMultiplier(heat: animation.heat))
     }
@@ -925,14 +928,14 @@ func exportMatrixPreview(to folder: URL, configuration: NotchMatrixConfiguration
     CGImageDestinationSetProperties(response, [kCGImagePropertyGIFDictionary:
         [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
     var loadAnimation = NotchFlameAnimation()
-    loadAnimation.setSpeed(responseRates[0])
+    loadAnimation.setSpeed(responseRates[0],effect:.matrix)
     for _ in 0..<240 {
         loadAnimation.advance(by: 1.0 / 60,
             flow: MatrixCodeFlow.motionMultiplier(heat: loadAnimation.heat))
     }
     var responseBody = MatrixHoleInteraction()
     for rate in responseRates {
-        loadAnimation.setSpeed(rate)
+        loadAnimation.setSpeed(rate,effect:.matrix)
         for _ in 0..<framesPerStage {
             loadAnimation.advance(by: 1 / fps,
                 flow: MatrixCodeFlow.motionMultiplier(heat: loadAnimation.heat))

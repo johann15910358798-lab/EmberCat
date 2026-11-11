@@ -53,11 +53,13 @@ final class NotchFlameController {
             ) { [weak self] _ in
                 MainActor.assumeIsolated {
                     self?.sleeping = false
-                    // Wait for the next measured rate instead of replaying pre-sleep output.
+                    // Resume from idle instead of replaying pre-sleep output.
                     self?.lastSpeed = 0
+                    self?.refreshVisibility()
                 }
             })
         }
+        refreshVisibility()
     }
 
     func update(speed: Double) {
@@ -67,28 +69,27 @@ final class NotchFlameController {
 
     private func refreshVisibility() {
         guard settings.isEnabled, !sleeping, !failed else { hide(); return }
-        if lastSpeed > 0 {
-            if panel == nil || panel?.isVisible != true || flameView?.effect != settings.effect
-                || (settings.effect == .lightning && flameView?.lightningConfiguration != settings.lightningConfiguration) {
-                refreshDisplay()
-            }
-            guard let panel, let flameView else { return }
-            flameView.setPalette(settings.palette)
-            flameView.setAppearance(settings.appearance)
-            flameView.setMatrixConfiguration(settings.matrixConfiguration)
-            flameView.setLightningConfiguration(settings.lightningConfiguration)
-            flameView.setSpeed(lastSpeed)
-            if !panel.isVisible { panel.orderFrontRegardless() }
-        } else {
-            flameView?.setSpeed(0)
+        let shouldShow = lastSpeed > 0 || settings.effect.hasIdleAnimation
+        guard shouldShow || panel != nil else { return }
+        if panel == nil || (shouldShow && panel?.isVisible != true) || flameView?.effect != settings.effect
+            || (settings.effect == .lightning && flameView?.lightningConfiguration != settings.lightningConfiguration) {
+            refreshDisplay()
+            return
         }
+        guard let panel, let flameView else { return }
+        flameView.setPalette(settings.palette)
+        flameView.setAppearance(settings.appearance)
+        flameView.setMatrixConfiguration(settings.matrixConfiguration)
+        flameView.setLightningConfiguration(settings.lightningConfiguration)
+        flameView.setSpeed(lastSpeed)
+        if shouldShow && !panel.isVisible { panel.orderFrontRegardless() }
     }
 
     private func refreshDisplay() {
         guard settings.isEnabled, !sleeping, !failed else { hide(); return }
         guard let profile = currentDisplay() else { hide(); return }
         if panel == nil {
-            guard lastSpeed > 0 else { return }
+            guard lastSpeed > 0 || settings.effect.hasIdleAnimation else { return }
             do {
                 let view = try NotchFlameMetalView(geometry: profile.geometry(for: settings.effect,
                     lightningConfiguration: settings.lightningConfiguration))
@@ -128,8 +129,8 @@ final class NotchFlameController {
         panel?.setFrame(profile.panelFrame(for: settings.effect,
             lightningConfiguration: settings.lightningConfiguration), display: true)
         flameView?.refreshDisplay(maximumFramesPerSecond: profile.maximumFramesPerSecond)
-        if lastSpeed > 0 {
-            flameView?.setSpeed(lastSpeed)
+        flameView?.setSpeed(lastSpeed)
+        if lastSpeed > 0 || settings.effect.hasIdleAnimation {
             panel?.orderFrontRegardless()
         }
     }

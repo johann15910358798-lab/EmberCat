@@ -235,7 +235,7 @@ enum NotchLightningShader {
         constant LightningDischarge *events [[buffer(2)]],
         texture2d<float> hamsters [[texture(3)]],texture2d<float> leaks [[texture(4)]],
         texture2d<float> energy [[texture(5)]]) {
-        if (u.visibility < .0001 || u.heat < .0001) return float4(0.0);
+        if (u.visibility < .0001) return float4(0.0);
         float2 p = in.uv*u.viewport;
         float aa = .65/u.pixelScale;
         float outside = smoothstep(-aa,aa,rim(p,u).y);

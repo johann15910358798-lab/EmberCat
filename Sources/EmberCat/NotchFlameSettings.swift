@@ -3,6 +3,8 @@ import AppKit
 enum NotchEffectStyle: String, CaseIterable {
     case flame, matrix, lightning
 
+    var hasIdleAnimation: Bool { self != .flame }
+
     var title: String {
         switch self {
         case .flame: "流焰"
@@ -228,7 +230,7 @@ enum NotchMatrixParameter: String, CaseIterable {
         switch self {
         case .blackHoleSize: "大小随 tok/s 自动变化；此项仅限制最大尺寸。"
         case .gravity: "越强越早汇聚吸入；远处保留竖直掉落。"
-        case .density: "调节代码数量，仍随 tok/s 增减；不改变已有字符的路径。"
+        case .density: "调节代码数量；预览与实机保持同一密度，tok/s 只影响速度和大小。"
         case .verticalOffset: "0 为半嵌入；向下拉可完全脱离刘海，代码仍会吸入。"
         case .rimWidth: "收窄或放宽吸积盘与洞缘细光；不改变暗核大小。"
         }
