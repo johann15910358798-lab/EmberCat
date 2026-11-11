@@ -158,8 +158,8 @@ struct FlameCheck {
             for _ in 0..<300 { idle.advance(by: 1.0 / 60) }
             let idleTravel = idle.phase-start
             try require(idle.heat == 0 && idle.targetHeat == 0 && idle.visibility == 1
-                && idle.needsFrames(reduceMotion: false) && idleTravel > 0 && idleTravel < slowTravel/10,
-                "Idle \(effect.rawValue) remains visible and moves very slowly without inventing measured heat")
+                && idle.needsFrames(reduceMotion: false) && idleTravel > slowTravel*0.4 && idleTravel < slowTravel*0.7,
+                "Idle \(effect.rawValue) keeps a visible slow clock instead of compounding the slowdown")
             idle.setSpeed(20, effect: effect)
             for _ in 0..<300 { idle.advance(by: 1.0 / 60) }
             try require(idle.motionScale == 1 && idle.heat == NotchFlameAnimation.heat(for: 20),

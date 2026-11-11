@@ -10,14 +10,22 @@ struct NotchLightningHamsterClip: Decodable {
     var duration: Double { frameDurations.reduce(0, +) }
 
     func frame(at elapsed: Double, offset: Double = 0) -> Int {
+        Int(framePosition(at: elapsed, offset: offset))
+    }
+
+    func framePosition(at elapsed: Double, offset: Double = 0) -> Double {
         let time = elapsed.isFinite ? max(0, elapsed) : 0
         var position = ((time+1e-9).truncatingRemainder(dividingBy: duration) + offset*duration)
             .truncatingRemainder(dividingBy: duration)
         for (index, duration) in frameDurations.enumerated() {
-            if position < duration { return firstFrame+index }
+            if position < duration {
+                // Keep Float conversion inside this cell, including the final
+                // frame whose next sample wraps to this clip's first frame.
+                return Double(firstFrame+index)+min(0.9999,position/duration)
+            }
             position -= duration
         }
-        return firstFrame+frameDurations.count-1
+        return Double(firstFrame+frameDurations.count-1)
     }
 }
 
@@ -39,10 +47,15 @@ struct NotchLightningHamsterManifest: Decodable {
         }
     }
 
-    func frameIndices(at elapsed: Double, offset: Double = 0, size: Double = 0) -> SIMD4<Float> {
-        SIMD4(Float(clips[0].frame(at: elapsed, offset: offset)),
-            Float(clips[1].frame(at: elapsed, offset: offset)),
-            Float(clips[2].frame(at: elapsed, offset: offset)), Float(size))
+    func frameIndices(at elapsed: Double, offset: Double = 0, size: Double = 0,
+                      interpolation: Double = 0) -> SIMD4<Float> {
+        let blend = interpolation.isFinite ? min(1,max(0,interpolation)) : 0
+        func index(_ clip: NotchLightningHamsterClip) -> Float {
+            let position = clip.framePosition(at: elapsed, offset: offset)
+            let current = floor(position)
+            return Float(current+(position-current)*blend)
+        }
+        return SIMD4(index(clips[0]),index(clips[1]),index(clips[2]),Float(size))
     }
 
     static func load(from folder: URL) throws -> Self {

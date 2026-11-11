@@ -5,7 +5,7 @@ enum NotchLightningShader {
     struct LightningUniforms {
         float4 shape; // thickness, notch distance, arc intensity, hamster gap
         float4 pose;  // horizontal/vertical displacement, roll angle, reserved
-        float4 hamsterLeft;  // three absolute frame indices, display size
+        float4 hamsterLeft;  // three fractional frame indices, display size
         float4 hamsterRight; // offset frame indices
         float4 hamsterAtlas; // columns, rows, wheel anchor x/y
     };
@@ -156,16 +156,28 @@ enum NotchLightningShader {
         return atlas.sample(linearSampler,(cell+uv)/grid);
     }
 
+    float4 tubeHamsterFrame(texture2d<float> atlas,float2 uv,float frame,
+        constant LightningUniforms &l) {
+        float current = floor(frame),blend = fract(frame);
+        float4 first = tubeHamsterCell(atlas,uv,current,l);
+        if (blend < .0001) return first;
+        // Every supplied clip has 24 frames. Its final frame blends back to its
+        // own first frame, never into the next speed tier's artwork.
+        float start = floor(current/24.0)*24.0;
+        float next = start+fmod(current-start+1.0,24.0);
+        return mix(first,tubeHamsterCell(atlas,uv,next,l),blend);
+    }
+
     float4 tubeHamster(texture2d<float> atlas,float2 uv,float3 frames,float h,
         constant LightningUniforms &l) {
         // Narrow transition bands around 60 and 140 tok/s keep the aligned
         // wheels continuous while each GIF retains its own original cadence.
         float fast = smoothstep(.385,.445,h),turbo = smoothstep(.79,.845,h);
-        if (fast < .0001) return tubeHamsterCell(atlas,uv,frames.x,l);
-        if (turbo > .9999) return tubeHamsterCell(atlas,uv,frames.z,l);
-        float4 middle = tubeHamsterCell(atlas,uv,frames.y,l);
-        if (fast < .9999) return mix(tubeHamsterCell(atlas,uv,frames.x,l),middle,fast);
-        if (turbo > .0001) return mix(middle,tubeHamsterCell(atlas,uv,frames.z,l),turbo);
+        if (fast < .0001) return tubeHamsterFrame(atlas,uv,frames.x,l);
+        if (turbo > .9999) return tubeHamsterFrame(atlas,uv,frames.z,l);
+        float4 middle = tubeHamsterFrame(atlas,uv,frames.y,l);
+        if (fast < .9999) return mix(tubeHamsterFrame(atlas,uv,frames.x,l),middle,fast);
+        if (turbo > .0001) return mix(middle,tubeHamsterFrame(atlas,uv,frames.z,l),turbo);
         return middle;
     }
 

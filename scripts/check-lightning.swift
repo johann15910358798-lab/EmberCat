@@ -318,11 +318,13 @@ struct LightningCheck {
             try require(panel.isVisible, "Zero output retains both hamsters and the energy bar")
             if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
                 let phase = view.animationPhase, suspension = view.lightningElapsed, hamster = view.hamsterElapsed
+                let frames = view.renderedFrameCount
                 pump(0.4)
-                try require(view.isRendering && view.animationPhase > phase && view.animationPhase-phase < 0.03
-                    && view.lightningElapsed > suspension && view.lightningElapsed-suspension < 0.08
-                    && view.hamsterElapsed > hamster && view.hamsterElapsed-hamster < 0.08,
-                    "Idle energy, suspension and hamster GIF clocks all advance very slowly")
+                try require(view.isRendering && view.animationPhase-phase > 0.05 && view.animationPhase-phase < 0.14
+                    && view.lightningElapsed-suspension > 0.10 && view.lightningElapsed-suspension < 0.30
+                    && view.hamsterElapsed-hamster > 0.10 && view.hamsterElapsed-hamster < 0.30
+                    && view.renderedFrameCount-frames >= 12,
+                    "Idle energy and hamsters keep perceptible motion with at least 30 native frames per second")
             }
             settings.isEnabled = false
             try require(!panel.isVisible && !view.isRendering,"Turning off still stops idle lightning immediately")

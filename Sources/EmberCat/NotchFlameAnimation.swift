@@ -2,6 +2,7 @@ import Foundation
 
 /// Measured heat stays at zero during idle; decorative effects can keep moving slowly.
 struct NotchFlameAnimation {
+    static let idleMotionScale = 0.45
     private(set) var heat: Double = 0
     private(set) var visibility: Double = 0
     private(set) var phase: Double = 8.73
@@ -19,7 +20,7 @@ struct NotchFlameAnimation {
     static func motionScale(heat: Double, effect: NotchEffectStyle) -> Double {
         guard effect.hasIdleAnimation else { return 1 }
         let progress = heat.isFinite ? min(1, max(0, heat / Self.heat(for: 20))) : 0
-        return 0.10 + 0.90 * progress * progress * (3 - 2 * progress)
+        return idleMotionScale + (1 - idleMotionScale) * progress * progress * (3 - 2 * progress)
     }
 
     var motionScale: Double { Self.motionScale(heat: heat, effect: effect) }
@@ -48,7 +49,9 @@ struct NotchFlameAnimation {
         if colorDistance < 0.0004 { color = targetColor }
         if !reduceMotion {
             let multiplier = flow.isFinite ? min(2.5, max(0.25, flow)) : 1
-            phase += delta * (0.22 + heat + 0.50 * heat * heat) * multiplier * motionScale
+            // Heat already slows the energy and code clocks. Applying the GIF
+            // slowdown again makes idle motion nearly imperceptible.
+            phase += delta * (0.22 + heat + 0.50 * heat * heat) * multiplier
         }
     }
 

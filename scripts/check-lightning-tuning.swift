@@ -286,8 +286,69 @@ func checkLightningHamsters(renderer: NotchFlameRenderer) throws -> [String: Any
     }
     print("PASS: all 72 source GIF frames, original timing, both animated sides, three speed tiers and independent energy flow")
     let controls = try checkHamsterControls(renderer: renderer, manifest: manifest)
+    let idle = try checkHamsterIdleSmoothness(renderer:renderer,manifest:manifest)
     return ["sourceFrames":manifest.frameCount,"clips":results,"mirroredRightSide":true,
-        "originalTimingPreserved":true,"energyFlowIndependent":true,"controls":controls]
+        "originalTimingPreserved":true,"energyFlowIndependent":true,"controls":controls,"idleSmoothness":idle]
+}
+
+@MainActor
+private func checkHamsterIdleSmoothness(renderer:NotchFlameRenderer,
+                                      manifest:NotchLightningHamsterManifest) throws -> [String:Any] {
+    func require(_ value:Bool,_ message:String) throws {
+        if !value { throw NSError(domain:"EmberCat.IdleSmoothness",code:1,
+            userInfo:[NSLocalizedDescriptionKey:message]) }
+    }
+    let clip = manifest.clips[0]
+    for source in manifest.clips {
+        let last = source.framePosition(at:source.duration-0.000_000_01)
+        try require(Int(last) == source.firstFrame+23 && last < Double(source.firstFrame+24),
+            "Fractional frames stay inside their own 24-frame GIF clip at wraparound")
+    }
+    var cases = [[String:Any]]()
+    for multiplier in [0.5,1.0,2.0] {
+        let configuration = NotchLightningConfiguration(arcs:0,hamsterSpeed:multiplier,motionEnabled:false)
+        let geometry = NotchFlameGeometry(notchWidth:180,notchHeight:32,effect:.lightning,
+            lightningConfiguration:configuration)
+        let rate = NotchFlameAnimation.idleMotionScale*multiplier
+        func render(_ seconds:Double) throws -> CGImage {
+            try renderer.image(geometry:geometry,time:12.4,speed:0,lightningMotionTime:0,
+                hamsterAnimationTime:seconds*rate)
+        }
+        var previous = Array(try render(0).dataProvider!.data! as Data)
+        var heldFrames = 0,minimumChanged = Int.max,maximumChanged = 0
+        let halfLength = geometry.notchWidth*0.88/2
+        for frame in 1...120 {
+            let image = try render(Double(frame)/60)
+            let current = Array(image.dataProvider!.data! as Data)
+            var changed = 0
+            for y in 0..<image.height {
+                for x in 0..<image.width where abs(Double(x)/2-geometry.notch.midX) > halfLength+3 {
+                    let offset = (y*image.width+x)*4
+                    if (0..<4).contains(where:{ abs(Int(current[offset+$0])-Int(previous[offset+$0])) > 1 }) {
+                        changed += 1
+                    }
+                }
+            }
+            if changed == 0 { heldFrames += 1 }
+            minimumChanged = min(minimumChanged,changed)
+            maximumChanged = max(maximumChanged,changed)
+            previous = current
+        }
+        try require(heldFrames == 0 && minimumChanged > 40,
+            "Slow GIF playback changes actual pet pixels every display frame, including the 0.5x setting")
+        let start = Array(try render(0).dataProvider!.data! as Data)
+        let loop = Array(try render(clip.duration/rate).dataProvider!.data! as Data)
+        try require(start == loop,"Interpolated idle playback wraps without changing clip identity")
+        let reducedA = try renderer.image(geometry:geometry,time:1,speed:0,hamsterAnimationTime:0,reduceMotion:true)
+        let reducedB = try renderer.image(geometry:geometry,time:100,speed:0,hamsterAnimationTime:100,reduceMotion:true)
+        try require(Array(reducedA.dataProvider!.data! as Data) == Array(reducedB.dataProvider!.data! as Data),
+            "Reduced motion disables temporal GIF interpolation and keeps a static idle pose")
+        cases.append(["multiplier":multiplier,"heldFrames":heldFrames,"sampleFrames":120,
+            "minimumChangedPetPixels":minimumChanged,"maximumChangedPetPixels":maximumChanged,
+            "loopSeconds":clip.duration/rate])
+    }
+    print("PASS: slow GIF interpolation changes actual pet pixels at every 60 Hz sample and loops continuously")
+    return ["sampleFPS":60,"sourceFramesPreserved":true,"cases":cases]
 }
 
 @MainActor

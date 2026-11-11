@@ -238,6 +238,8 @@ final class NotchFlameRenderer {
                 ?? (lightningMotionTime ?? time)*configuration.hamsterSpeed
             let hamsterSize = NotchLightningMotion.hamsterSize(notchWidth: geometry.notchWidth,
                 scale: configuration.hamsterScale)
+            let motionScale = NotchFlameAnimation.motionScale(heat:Double(heat),effect:.lightning)
+            let interpolation = reduceMotion ? 0 : (1-motionScale)/(1-NotchFlameAnimation.idleMotionScale)
             let discharges = NotchLightningDischarges.events(phase: effectiveTime, seed: lightningSeed)
             let pose = NotchLightningMotion.pose(elapsed: lightningMotionTime ?? time,
                 phase: effectiveTime, heat: Double(heat), configuration: configuration,
@@ -245,8 +247,9 @@ final class NotchFlameRenderer {
             var lightning = LightningUniforms(
                 shape: SIMD4(Float(configuration.thickness), Float(configuration.distance),
                     Float(configuration.arcs), Float(configuration.hamsterGap)), pose: pose.uniform,
-                hamsterLeft: manifest.frameIndices(at: hamsterTime, size: hamsterSize),
-                hamsterRight: manifest.frameIndices(at: hamsterTime, offset: reduceMotion ? 0 : 0.23),
+                hamsterLeft: manifest.frameIndices(at: hamsterTime, size: hamsterSize,interpolation:interpolation),
+                hamsterRight: manifest.frameIndices(at: hamsterTime, offset: reduceMotion ? 0 : 0.23,
+                    interpolation:interpolation),
                 hamsterAtlas: SIMD4(Float(manifest.columns), Float(manifest.rows),
                     Float(manifest.wheelAnchor[0]), Float(manifest.wheelAnchor[1])))
             encoder.setFragmentBytes(&lightning, length: MemoryLayout<LightningUniforms>.stride, index: 1)

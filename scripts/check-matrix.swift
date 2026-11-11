@@ -689,8 +689,8 @@ struct MatrixCheck {
         let idlePhase = transition.phase
         transition.advance(by:1/60,flow:MatrixCodeFlow.motionMultiplier(heat:transition.heat))
         try require(transition.heat == 0 && transition.visibility == 1 && transition.needsFrames(reduceMotion:false)
-            && transition.phase > idlePhase && transition.phase-idlePhase < phaseSteps[0]/10,
-            "Zero load keeps Matrix visible with a much slower continuous clock")
+            && transition.phase-idlePhase > phaseSteps[0]*0.35 && transition.phase-idlePhase < phaseSteps[0]*0.55,
+            "Idle Matrix keeps a perceptible continuous clock without slowing it a second time")
 
         func liveScale(_ speed:Double,_ time:Double) -> Double {
             MatrixHoleInteraction.radiusScale(heat:NotchFlameAnimation.heat(for:speed),time:time)
@@ -1323,11 +1323,12 @@ struct MatrixCheck {
             pump(4.3)
             try require(panel.isVisible, "Zero output retains the native Matrix surface")
             if !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
-                let phase = view.animationPhase, breath = view.matrixBreathingElapsed
+                let phase = view.animationPhase, breath = view.matrixBreathingElapsed, frames = view.renderedFrameCount
                 pump(0.4)
-                try require(view.isRendering && view.animationPhase > phase && view.animationPhase-phase < 0.03
-                    && view.matrixBreathingElapsed > breath && view.matrixBreathingElapsed-breath < 0.08,
-                    "Idle Matrix code and breathing advance slowly on the actual native view")
+                try require(view.isRendering && view.animationPhase-phase > 0.025 && view.animationPhase-phase < 0.09
+                    && view.matrixBreathingElapsed-breath > 0.10 && view.matrixBreathingElapsed-breath < 0.30
+                    && view.renderedFrameCount-frames >= 12,
+                    "Idle Matrix remains perceptibly in motion and submits at least 30 native frames per second")
             }
             let idleConfiguration = NotchMatrixConfiguration(density:2.35,verticalOffset:28)
             settings.setMatrixConfiguration(idleConfiguration)
